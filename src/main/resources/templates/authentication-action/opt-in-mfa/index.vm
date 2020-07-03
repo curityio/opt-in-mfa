@@ -1,0 +1,22 @@
+#parse("fragments/icon-mappings")
+
+#set($title = "Choose second factor")
+
+#set ($page_symbol = $page_symbol_authenticate_desktop)
+
+#define ($_body)
+    <p>Select the second factor you want to use to verify the login</p>
+
+    <form class="center">
+        #foreach($_authenticatorMapItem in $authenticators.values())
+            <div class="form-field mb1">
+                <a href="$_actionUrl/chooseFactor?authenticatorId=$_authenticatorMapItem.id" id="$_authenticatorMapItem.id" class="button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
+                    <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
+                    $_authenticatorMapItem.description
+                </a>
+            </div>
+        #end
+    </form>
+#end
+
+#parse("layouts/default")
