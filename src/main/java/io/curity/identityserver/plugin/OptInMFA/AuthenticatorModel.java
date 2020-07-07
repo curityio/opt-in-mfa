@@ -20,28 +20,32 @@ import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDe
 
 public final class AuthenticatorModel
 {
-    private final String _id;
+    private final String _acr;
     private final String _description;
     private final String _type;
 
-    public AuthenticatorModel(String id, @Nullable String description, String type)
+    public AuthenticatorModel(String acr, @Nullable String description, String type, String name)
     {
-        _id = id;
-        if (description != null)
+        _acr = acr;
+
+        if (!name.equals(acr)) {
+            _description = name;
+        }
+        else if (description != null)
         {
             _description = description;
         }
         else
         {
-            _description = id;
+            _description = acr;
         }
 
         _type = type;
     }
 
-    public String getId()
+    public String getAcr()
     {
-        return _id;
+        return _acr;
     }
 
     public String getDescription()
@@ -54,9 +58,9 @@ public final class AuthenticatorModel
         return _type;
     }
 
-    public static AuthenticatorModel toAuthenticatorModel(AuthenticatorDescriptor descriptor)
+    public static AuthenticatorModel toAuthenticatorModel(AuthenticatorDescriptor descriptor, String name)
     {
         //TODO - there should be a way to get the type from somewhere
-        return new AuthenticatorModel(descriptor.getId(), descriptor.getDescription(), "html-form");
+        return new AuthenticatorModel(descriptor.getAcr(), descriptor.getDescription(), "html-form", name);
     }
 }

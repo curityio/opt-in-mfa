@@ -17,6 +17,7 @@ package io.curity.identityserver.plugin.OptInMFA;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import se.curity.identityserver.sdk.NonEmptyList;
 import se.curity.identityserver.sdk.attribute.AccountAttributes;
 import se.curity.identityserver.sdk.attribute.Attribute;
 import se.curity.identityserver.sdk.attribute.AuthenticationAttributes;
@@ -42,6 +43,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     public static final String CHOSEN_SECOND_FACTOR_ATTRIBUTE = ATTRIBUTE_PREFIX + "chosen-second-factor";
     public static final String IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE = ATTRIBUTE_PREFIX + "is-second-factor-chosen";
     public static final String AVAILABLE_SECOND_FACTORS_ATTRIBUTE = ATTRIBUTE_PREFIX + "second-factors";
+    public static final String REMEMBER_CHOICE_COOKIE_NAME = "rememberSecondFactorChoice";
 
     private static final Logger _logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
@@ -66,42 +68,41 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
         if (isSecondFactorChosenAttribute != null)
         {
-            return handleActionWhenSecondFactorNotSet(authenticatedSessions, authenticationAttributes);
+            return handleActionWhenSecondFactorChosen(authenticatedSessions, authenticationAttributes);
         }
         else
         {
-            return handleActionWhenSecondFactorChosen(authenticationAttributes.getSubject());
+            return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
         }
     }
 
-    private AuthenticationActionResult handleActionWhenSecondFactorNotSet(AuthenticatedSessions authenticatedSessions, AuthenticationAttributes authenticationAttributes)
+    private AuthenticationActionResult handleActionWhenSecondFactorChosen(AuthenticatedSessions authenticatedSessions, AuthenticationAttributes authenticationAttributes)
     {
-        String secondFactorId = _sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
+        String secondFactorAcr = _sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
+
+        if (authenticatedSessions.contains(secondFactorAcr))
+        {
+            _sessionManager.remove(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE);
+            _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE);
+
+            return AuthenticationActionResult.successfulResult(authenticationAttributes);
+        }
 
         try
         {
-            AuthenticatorDescriptor authenticator = _authenticatorDescriptorFactory.getAuthenticatorDescriptor(secondFactorId);
-
-            if (authenticatedSessions.contains(authenticator.getAcr()))
-            {
-                _sessionManager.remove(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE);
-                _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE);
-
-                return AuthenticationActionResult.successfulResult(authenticationAttributes);
-            }
-
-            return AuthenticationActionResult.pendingResult(authenticate(authenticator));
+            NonEmptyList<AuthenticatorDescriptor> authenticators = _authenticatorDescriptorFactory.getAuthenticatorDescriptors(secondFactorAcr);
+            return AuthenticationActionResult.pendingResult(authenticate(authenticators.getFirst()));
         }
         catch (AuthenticatorNotConfiguredException e)
         {
-            _logger.info("Invalid authenticator chosen as second factor, or authenticator not configured: {}", secondFactorId);
-            throw new IllegalStateException("Invalid authenticator");
+            _logger.info("Invalid authenticator chosen as second factor, or authenticator not configured: {}", secondFactorAcr);
+            throw new IllegalStateException("Invalid authenticator chosen.");
         }
     }
 
-    private AuthenticationActionResult handleActionWhenSecondFactorChosen(String subject)
+    private AuthenticationActionResult handleActionWhenSecondFactorNotSet(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
-        AccountAttributes user = _accountManager.getByUserName(subject);
+        AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
 
         Map<String, String> secondFactors = user.getOptionalValue("secondFactors", Map.class);
 
@@ -109,6 +110,11 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         {
             // TODO: allow to register first factor
             return AuthenticationActionResult.failedResult("secondFactor authenticators have to be set!");
+        }
+
+        if (secondFactors.values().stream().anyMatch(authenticatedSessions::contains))
+        {
+            return AuthenticationActionResult.successfulResult(authenticationAttributes);
         }
 
         _sessionManager.put(Attribute.of(AVAILABLE_SECOND_FACTORS_ATTRIBUTE, MapAttributeValue.of(secondFactors)));

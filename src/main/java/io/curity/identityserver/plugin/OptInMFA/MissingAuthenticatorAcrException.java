@@ -15,10 +15,10 @@
  */
 package io.curity.identityserver.plugin.OptInMFA;
 
-public class MissingAuthenticatorIdException extends RuntimeException
+public class MissingAuthenticatorAcrException extends RuntimeException
 {
-    public MissingAuthenticatorIdException()
+    public MissingAuthenticatorAcrException()
     {
-        super("`authenticatorId` query parameter is required.");
+        super("`secondFactor` parameter is required.");
     }
 }

@@ -16,6 +16,7 @@
 package io.curity.identityserver.plugin.OptInMFA;
 
 import se.curity.identityserver.sdk.config.Configuration;
+import se.curity.identityserver.sdk.config.annotation.DefaultInteger;
 import se.curity.identityserver.sdk.config.annotation.Description;
 import se.curity.identityserver.sdk.service.AccountManager;
 import se.curity.identityserver.sdk.service.SessionManager;
@@ -24,6 +25,11 @@ import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDe
 
 public interface OptInMFAAuthenticationActionConfig extends Configuration
 {
+
+    @Description("How long should the `remember my choice` cookie be valid, in days.")
+    @DefaultInteger(30)
+    Integer getRememberMyChoiceDaysLimit();
+
     AccountManager getAccountManager();
 
     AuthenticatorDescriptorFactory getAuthenticatorDescriptorFactory();

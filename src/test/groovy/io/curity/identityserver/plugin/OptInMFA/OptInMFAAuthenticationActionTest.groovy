@@ -1,3 +1,18 @@
+/*
+ *  Copyright 2020 Curity AB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ */
 package io.curity.identityserver.plugin.OptInMFA
 
 import se.curity.identityserver.sdk.attribute.AccountAttributes
@@ -59,8 +74,9 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def configuration = new TestActionConfiguration(accountManager, null, sessionManager)
         def action = new OptInMFAAuthenticationAction(configuration)
 
+        def authenticatedSessions = authenticatedSessionsStubWithoutSessions()
         when:
-        def result = action.apply(authenticationAttributes, null, "transactionId", null)
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
 
         then:
         result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
@@ -123,12 +139,29 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def user = getUserAttributes(["My email": "email"])
         def accountManager = getAccountManagerStubReturningUser(user)
 
+        def authenticatedSessions = authenticatedSessionsStubWithSession("email")
 
-        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def configuration = new TestActionConfiguration(accountManager, null, sessionManager)
+        def action = new OptInMFAAuthenticationAction(configuration)
+
+        when:
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then:
+        result instanceof AuthenticationActionResult.SuccessAuthenticationActionResult
+    }
+
+    def "should successfully complete action if there is sso session of any authenticator on the list"()
+    {
+        given:
+        def sessionManager = getSessionManagerStubWithoutChosenSecondFactor()
+
+        def user = getUserAttributes(["My email": "email"])
+        def accountManager = getAccountManagerStubReturningUser(user)
 
         def authenticatedSessions = authenticatedSessionsStubWithSession("email")
 
-        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+        def configuration = new TestActionConfiguration(accountManager, null, sessionManager)
         def action = new OptInMFAAuthenticationAction(configuration)
 
         when:
@@ -205,38 +238,5 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def authenticatedSessions = Stub(AuthenticatedSessions)
         authenticatedSessions.contains(acr) >> true
         authenticatedSessions
-    }
-
-    private class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
-    {
-        private final AccountManager _accountManager;
-        private final AuthenticatorDescriptorFactory _authenticatorDescriptorFactory;
-        private final SessionManager _sessionManager;
-
-        TestActionConfiguration(AccountManager accountManager, AuthenticatorDescriptorFactory authenticatorDescriptorFactory, SessionManager sessionManager) {
-            _accountManager = accountManager
-            _authenticatorDescriptorFactory = authenticatorDescriptorFactory
-            _sessionManager = sessionManager
-        }
-
-        @Override
-        AccountManager getAccountManager() {
-            return _accountManager
-        }
-
-        @Override
-        AuthenticatorDescriptorFactory getAuthenticatorDescriptorFactory() {
-            return _authenticatorDescriptorFactory
-        }
-
-        @Override
-        SessionManager getSessionManager() {
-            return _sessionManager
-        }
-
-        @Override
-        String id() {
-            return ""
-        }
     }
 }

@@ -22,38 +22,55 @@ import se.curity.identityserver.sdk.service.ExceptionFactory;
 import se.curity.identityserver.sdk.service.SessionManager;
 import se.curity.identityserver.sdk.web.Request;
 import se.curity.identityserver.sdk.web.Response;
+import se.curity.identityserver.sdk.web.cookie.StandardResponseCookie;
 
+import java.time.Duration;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
 
 public final class OptInMFAChooseFactorHandler implements ActionCompletionRequestHandler<Request>
 {
     private final SessionManager _sessionManager;
     private final ExceptionFactory _exceptionFactory;
+    private final Integer _rememberChoiceDays;
 
-    public OptInMFAChooseFactorHandler(SessionManager sessionManager, ExceptionFactory exceptionFactory)
+    public OptInMFAChooseFactorHandler(SessionManager sessionManager, ExceptionFactory exceptionFactory, OptInMFAAuthenticationActionConfig configuration)
     {
         _sessionManager = sessionManager;
         _exceptionFactory = exceptionFactory;
+        _rememberChoiceDays = configuration.getRememberMyChoiceDaysLimit();
     }
 
     @Override
     public Optional<ActionCompletionResult> get(Request request, Response response)
     {
-        String authenticatorId = request.getQueryParameterValueOrError("authenticatorId", s -> new MissingAuthenticatorIdException());
-
-        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, authenticatorId));
-        _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
-
-        return Optional.of(ActionCompletionResult.complete());
+        throw _exceptionFactory.methodNotAllowed();
     }
 
     @Override
     public Optional<ActionCompletionResult> post(Request request, Response response)
     {
-        throw _exceptionFactory.methodNotAllowed();
+        String authenticatorAcr = request.getFormParameterValueOrError("secondFactor");
+
+        if (authenticatorAcr == null) {
+            throw new MissingAuthenticatorAcrException();
+        }
+
+        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, authenticatorAcr));
+        _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
+
+        String rememberChoice = request.getFormParameterValueOrError("rememberChoice");
+
+        if (rememberChoice != null) {
+            StandardResponseCookie cookie = new StandardResponseCookie(REMEMBER_CHOICE_COOKIE_NAME, authenticatorAcr);
+            cookie.setMaxAge(Duration.ofDays(_rememberChoiceDays));
+            response.cookies().add(cookie);
+        }
+
+        return Optional.of(ActionCompletionResult.complete());
     }
 
     @Override

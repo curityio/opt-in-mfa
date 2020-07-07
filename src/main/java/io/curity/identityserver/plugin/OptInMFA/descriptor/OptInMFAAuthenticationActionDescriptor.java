@@ -22,6 +22,7 @@ import io.curity.identityserver.plugin.OptInMFA.OptInMFAuthenticationActionHandl
 import se.curity.identityserver.sdk.authenticationaction.AuthenticationAction;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
 import se.curity.identityserver.sdk.plugin.descriptor.AuthenticationActionPluginDescriptor;
+import se.curity.identityserver.sdk.web.RequestHandlerSet;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -53,5 +54,11 @@ public final class OptInMFAAuthenticationActionDescriptor implements Authenticat
         handlerTypes.put("index", OptInMFAuthenticationActionHandler.class);
         handlerTypes.put("chooseFactor", OptInMFAChooseFactorHandler.class);
         return handlerTypes;
+    }
+
+    @Override
+    public RequestHandlerSet allowedHandlersForCrossSiteNonSafeRequests()
+    {
+        return RequestHandlerSet.none();
     }
 }
