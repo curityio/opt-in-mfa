@@ -18,6 +18,7 @@ package io.curity.identityserver.plugin.OptInMFA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.curity.identityserver.sdk.NonEmptyList;
+import se.curity.identityserver.sdk.Nullable;
 import se.curity.identityserver.sdk.attribute.AccountAttributes;
 import se.curity.identityserver.sdk.attribute.Attribute;
 import se.curity.identityserver.sdk.attribute.AuthenticationAttributes;
@@ -64,7 +65,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
                                             String authenticationTransactionId,
                                             AuthenticatorDescriptor authenticatorDescriptor)
     {
-        Attribute isSecondFactorChosenAttribute = _sessionManager.get(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE);
+        @Nullable Attribute isSecondFactorChosenAttribute = _sessionManager.get(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE);
 
         if (isSecondFactorChosenAttribute != null)
         {

@@ -15,9 +15,9 @@
  */
 package io.curity.identityserver.plugin.OptInMFA;
 
-public class MissingAuthenticatorAcrException extends RuntimeException
+public class MissingSecondFactorParameterException extends RuntimeException
 {
-    public MissingAuthenticatorAcrException()
+    public MissingSecondFactorParameterException()
     {
         super("`secondFactor` parameter is required.");
     }

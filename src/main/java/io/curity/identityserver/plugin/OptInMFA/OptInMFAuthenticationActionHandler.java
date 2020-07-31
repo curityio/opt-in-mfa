@@ -18,7 +18,10 @@ package io.curity.identityserver.plugin.OptInMFA;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.curity.identityserver.sdk.NonEmptyList;
+import se.curity.identityserver.sdk.Nullable;
 import se.curity.identityserver.sdk.attribute.Attribute;
+import se.curity.identityserver.sdk.attribute.AttributeValue;
+import se.curity.identityserver.sdk.attribute.MapAttributeValue;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionResult;
 import se.curity.identityserver.sdk.errors.AuthenticatorNotConfiguredException;
@@ -36,7 +39,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AVAILABLE_SECOND_FACTORS_ATTRIBUTE;
-import static io.curity.identityserver.plugin.OptInMFA.AuthenticatorModel.toAuthenticatorModel;
+import static io.curity.identityserver.plugin.OptInMFA.AuthenticatorModel.of;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
@@ -67,16 +70,29 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
     @Override
     public Optional<ActionCompletionResult> get(Request request, Response response)
     {
-        Map<String, String> secondFactors = (Map<String, String>) _sessionManager.get(AVAILABLE_SECOND_FACTORS_ATTRIBUTE).getValue();
-        _sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE);
+        @Nullable Attribute secondFactorsAttribute = _sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE);
+
+        if (secondFactorsAttribute == null)
+        {
+            throw new SecondFactorsInvalidException();
+        }
+
+        AttributeValue value = secondFactorsAttribute.getAttributeValue();
+
+        if (!(value instanceof MapAttributeValue))
+        {
+            throw new SecondFactorsInvalidException();
+        }
+
+        Map<String, Object> secondFactors = ((MapAttributeValue) value).getValue();
 
         Map<String, AuthenticatorModel> authenticators = new HashMap<>(secondFactors.size());
 
         secondFactors.forEach((name, acr) -> {
             try
             {
-                NonEmptyList<AuthenticatorDescriptor> descriptor = _authenticatorDescriptorFactory.getAuthenticatorDescriptors(acr);
-                authenticators.put(acr, toAuthenticatorModel(descriptor.getFirst(), name));
+                NonEmptyList<AuthenticatorDescriptor> descriptor = _authenticatorDescriptorFactory.getAuthenticatorDescriptors((String) acr);
+                authenticators.put((String) acr, of(descriptor.getFirst(), name));
             }
             catch (AuthenticatorNotConfiguredException e)
             {
@@ -86,7 +102,8 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
 
         Cookie rememberChoiceCookie = request.getCookies().getFirst(REMEMBER_CHOICE_COOKIE_NAME);
 
-        if (rememberChoiceCookie != null && authenticators.containsKey(rememberChoiceCookie.getValue())) {
+        if (rememberChoiceCookie != null && authenticators.containsKey(rememberChoiceCookie.getValue()))
+        {
             _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, rememberChoiceCookie.getValue()));
             _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
             return Optional.of(ActionCompletionResult.complete());

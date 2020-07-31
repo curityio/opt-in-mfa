@@ -28,7 +28,7 @@ public interface OptInMFAAuthenticationActionConfig extends Configuration
 
     @Description("How long should the `remember my choice` cookie be valid, in days.")
     @DefaultInteger(30)
-    Integer getRememberMyChoiceDaysLimit();
+    int getRememberMyChoiceDaysLimit();
 
     AccountManager getAccountManager();
 

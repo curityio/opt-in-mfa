@@ -47,7 +47,7 @@ class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
     }
 
     @Override
-    Integer getRememberMyChoiceDaysLimit() {
+    int getRememberMyChoiceDaysLimit() {
         return 30
     }
 

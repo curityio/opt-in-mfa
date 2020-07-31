@@ -28,7 +28,8 @@ public final class AuthenticatorModel
     {
         _acr = acr;
 
-        if (!name.equals(acr)) {
+        if (!name.equals(acr))
+        {
             _description = name;
         }
         else if (description != null)
@@ -58,7 +59,7 @@ public final class AuthenticatorModel
         return _type;
     }
 
-    public static AuthenticatorModel toAuthenticatorModel(AuthenticatorDescriptor descriptor, String name)
+    public static AuthenticatorModel of(AuthenticatorDescriptor descriptor, String name)
     {
         //TODO - there should be a way to get the type from somewhere
         return new AuthenticatorModel(descriptor.getAcr(), descriptor.getDescription(), "html-form", name);

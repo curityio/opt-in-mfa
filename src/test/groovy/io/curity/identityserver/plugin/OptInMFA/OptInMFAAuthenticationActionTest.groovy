@@ -37,7 +37,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
 
     private def username = "john"
     private def authenticationAttributes = AuthenticationAttributes.of(username, ContextAttributes.empty())
-    @Shared private def authenticator = Stub(AuthenticatorDescriptor)
+    @Shared
+    private def authenticator = Stub(AuthenticatorDescriptor)
 
     def setupSpec()
     {
@@ -79,8 +80,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
 
         then:
-        result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
-        ((AuthenticationActionResult.PendingCompletionAuthenticationActionResult) result).obligation instanceof RequiredActionCompletion.PromptUser
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        result.obligation instanceof RequiredActionCompletion.PromptUser
     }
 
     def "should redirect to the authenticator when user has chosen a secondary factor"()
@@ -102,12 +103,11 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
 
         then:
-        result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = result.obligation
+        assert obligation instanceof RequiredActionCompletion.AuthenticateUser
 
-        def obligation = ((AuthenticationActionResult.PendingCompletionAuthenticationActionResult) result).obligation
-        obligation instanceof RequiredActionCompletion.AuthenticateUser
-
-        def authenticatorDescriptor = ((RequiredActionCompletion.AuthenticateUser) obligation).authenticatorDescriptor
+        def authenticatorDescriptor = obligation.authenticatorDescriptor
         authenticatorDescriptor.getAcr() == "email"
     }
 

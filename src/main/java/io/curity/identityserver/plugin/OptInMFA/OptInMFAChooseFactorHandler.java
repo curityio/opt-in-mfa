@@ -31,11 +31,11 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAct
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
 
-public final class OptInMFAChooseFactorHandler implements ActionCompletionRequestHandler<Request>
+public final class OptInMFAChooseFactorHandler implements ActionCompletionRequestHandler<ChooseFactorPostRequestModel>
 {
     private final SessionManager _sessionManager;
     private final ExceptionFactory _exceptionFactory;
-    private final Integer _rememberChoiceDays;
+    private final int _rememberChoiceDays;
 
     public OptInMFAChooseFactorHandler(SessionManager sessionManager, ExceptionFactory exceptionFactory, OptInMFAAuthenticationActionConfig configuration)
     {
@@ -45,27 +45,22 @@ public final class OptInMFAChooseFactorHandler implements ActionCompletionReques
     }
 
     @Override
-    public Optional<ActionCompletionResult> get(Request request, Response response)
+    public Optional<ActionCompletionResult> get(ChooseFactorPostRequestModel request, Response response)
     {
         throw _exceptionFactory.methodNotAllowed();
     }
 
     @Override
-    public Optional<ActionCompletionResult> post(Request request, Response response)
+    public Optional<ActionCompletionResult> post(ChooseFactorPostRequestModel request, Response response)
     {
-        String authenticatorAcr = request.getFormParameterValueOrError("secondFactor");
-
-        if (authenticatorAcr == null) {
-            throw new MissingAuthenticatorAcrException();
-        }
-
-        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, authenticatorAcr));
+        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
         _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
 
-        String rememberChoice = request.getFormParameterValueOrError("rememberChoice");
+        String rememberChoice = request.getRememberChoice();
 
-        if (rememberChoice != null) {
-            StandardResponseCookie cookie = new StandardResponseCookie(REMEMBER_CHOICE_COOKIE_NAME, authenticatorAcr);
+        if (rememberChoice != null)
+        {
+            StandardResponseCookie cookie = new StandardResponseCookie(REMEMBER_CHOICE_COOKIE_NAME, request.getSecondFactor());
             cookie.setMaxAge(Duration.ofDays(_rememberChoiceDays));
             response.cookies().add(cookie);
         }
@@ -74,8 +69,13 @@ public final class OptInMFAChooseFactorHandler implements ActionCompletionReques
     }
 
     @Override
-    public Request preProcess(Request request, Response response)
+    public ChooseFactorPostRequestModel preProcess(Request request, Response response)
     {
-        return request;
+        if (!request.isPostRequest())
+        {
+            throw _exceptionFactory.methodNotAllowed();
+        }
+
+        return new ChooseFactorPostRequestModel(request);
     }
 }

@@ -31,22 +31,17 @@ class OptInMFAChooseFactorHandlerTest extends Specification {
 
     def configuration = new TestActionConfiguration(null, null, null)
 
-    def "should throw exception when secondFactor parameter missing"()
+    def "should throw exception when secondFactor parameter missing in request"()
     {
         given:
-        def sessionManager = Stub(SessionManager)
-
-        def response = Stub(Response)
         def request = Stub(Request)
         request.getFormParameterValueOrError("secondFactor") >> null
 
-        def handler = new OptInMFAChooseFactorHandler(sessionManager, null, configuration)
-
         when:
-        handler.post(request, response)
+        new ChooseFactorPostRequestModel(request)
 
         then:
-        thrown MissingAuthenticatorAcrException
+        thrown MissingSecondFactorParameterException
     }
 
     def "should set session variables and not set cookie when option in form not set"()
@@ -61,11 +56,12 @@ class OptInMFAChooseFactorHandlerTest extends Specification {
         def request = Stub(Request)
         request.getFormParameterValueOrError("secondFactor") >> "email1"
         request.getFormParameterValueOrError("rememberChoice") >> null
+        def requestModel = new ChooseFactorPostRequestModel(request)
 
         def handler = new OptInMFAChooseFactorHandler(sessionManager, null, configuration)
 
         when:
-        handler.post(request, response)
+        handler.post(requestModel, response)
 
         then:
         1 * sessionManager.put({ it.getValue().toString() == "email1"; it.getName().getValue() == CHOSEN_SECOND_FACTOR_ATTRIBUTE })
@@ -84,11 +80,12 @@ class OptInMFAChooseFactorHandlerTest extends Specification {
 
         def request = Stub(Request)
         request.getParameterValueOrError("rememberChoice") >> "on"
+        def requestModel = new ChooseFactorPostRequestModel(request)
 
         def handler = new OptInMFAChooseFactorHandler(sessionManager, null, configuration)
 
         when:
-        handler.post(request, response)
+        handler.post(requestModel, response)
 
         then:
         1 * cookieJar.add({ StandardResponseCookie cookie -> cookie.maxAge.get() == Duration.ofDays(30); })

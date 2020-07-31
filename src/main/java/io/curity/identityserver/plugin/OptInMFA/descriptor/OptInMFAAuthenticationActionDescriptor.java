@@ -24,11 +24,22 @@ import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompl
 import se.curity.identityserver.sdk.plugin.descriptor.AuthenticationActionPluginDescriptor;
 import se.curity.identityserver.sdk.web.RequestHandlerSet;
 
+import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
 
 public final class OptInMFAAuthenticationActionDescriptor implements AuthenticationActionPluginDescriptor<OptInMFAAuthenticationActionConfig>
 {
+    private static final Map<String, Class<? extends ActionCompletionRequestHandler<?>>> _handlerTypes;
+
+    static
+    {
+        Map<String, Class<? extends ActionCompletionRequestHandler<?>>> handlerTypes = new HashMap<>(2);
+        handlerTypes.put("index", OptInMFAuthenticationActionHandler.class);
+        handlerTypes.put("chooseFactor", OptInMFAChooseFactorHandler.class);
+        _handlerTypes = Collections.unmodifiableMap(handlerTypes);
+    }
+
     @Override
     public Class<? extends AuthenticationAction> getAuthenticationAction()
     {
@@ -50,10 +61,7 @@ public final class OptInMFAAuthenticationActionDescriptor implements Authenticat
     @Override
     public Map<String, Class<? extends ActionCompletionRequestHandler<?>>> getAuthenticationActionRequestHandlerTypes()
     {
-        Map<String, Class<? extends ActionCompletionRequestHandler<?>>> handlerTypes = new HashMap<>(2);
-        handlerTypes.put("index", OptInMFAuthenticationActionHandler.class);
-        handlerTypes.put("chooseFactor", OptInMFAChooseFactorHandler.class);
-        return handlerTypes;
+        return _handlerTypes;
     }
 
     @Override
