@@ -27,20 +27,9 @@ public final class AuthenticatorModel
     public AuthenticatorModel(String acr, @Nullable String description, String type, String name)
     {
         _acr = acr;
-
-        if (!name.equals(acr))
-        {
-            _description = name;
-        }
-        else if (description != null)
-        {
-            _description = description;
-        }
-        else
-        {
-            _description = acr;
-        }
-
+        boolean hasUserDefinedName = !name.equals(acr);
+        boolean descriptionNotEmpty = description != null && !description.isEmpty();
+        _description = hasUserDefinedName ? name : (descriptionNotEmpty ? description : acr);
         _type = type;
     }
 

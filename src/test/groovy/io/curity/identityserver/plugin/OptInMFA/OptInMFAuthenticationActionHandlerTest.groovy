@@ -42,7 +42,7 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
     def configuration = new TestActionConfiguration(null, null, null)
 
     def setupSpec() {
-        sessionManager.get(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
+        sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
                 MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
     }
@@ -116,7 +116,7 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
     {
         given:
         def sessionManager = Mock(SessionManager)
-        sessionManager.get(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
+        sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
                 MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
         def factory = Mock(AuthenticatorDescriptorFactory)

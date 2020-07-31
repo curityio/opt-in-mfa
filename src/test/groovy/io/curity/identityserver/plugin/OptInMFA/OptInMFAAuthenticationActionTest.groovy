@@ -15,6 +15,7 @@
  */
 package io.curity.identityserver.plugin.OptInMFA
 
+import se.curity.identityserver.sdk.NonEmptyList
 import se.curity.identityserver.sdk.attribute.AccountAttributes
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.attribute.AuthenticationAttributes
@@ -124,8 +125,10 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
         def action = new OptInMFAAuthenticationAction(configuration)
 
+        def authenticatedSessions = authenticatedSessionsStubWithoutSessions()
+
         when:
-        action.apply(authenticationAttributes, null, "transactionId", null)
+        action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
 
         then:
         thrown IllegalStateException
@@ -195,17 +198,17 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         sessionManager
     }
 
-    private def authenticatorDescriptorFactoryStubThrowingError(id)
+    private def authenticatorDescriptorFactoryStubThrowingError(acr)
     {
         def descriptor = Stub(AuthenticatorDescriptorFactory)
-        descriptor.getAuthenticatorDescriptor(id) >> { throw new AuthenticatorNotConfiguredException("Not configured") }
+        descriptor.getAuthenticatorDescriptors(acr) >> { throw new AuthenticatorNotConfiguredException("Not configured") }
         descriptor
     }
 
-    private def authenticatorDescriptorFactoryStubReturningDescriptor(id)
+    private def authenticatorDescriptorFactoryStubReturningDescriptor(acr)
     {
         def descriptor = Stub(AuthenticatorDescriptorFactory)
-        descriptor.getAuthenticatorDescriptor(id) >> authenticator
+        descriptor.getAuthenticatorDescriptors(acr) >> NonEmptyList.of(authenticator)
         descriptor
     }
 
