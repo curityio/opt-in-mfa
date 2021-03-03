@@ -20,8 +20,9 @@ import se.curity.identityserver.sdk.config.annotation.DefaultInteger;
 import se.curity.identityserver.sdk.config.annotation.Description;
 import se.curity.identityserver.sdk.service.AccountManager;
 import se.curity.identityserver.sdk.service.SessionManager;
-import se.curity.identityserver.sdk.service.authentication.AuthenticatorInformationProvider;
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory;
+
+import java.util.List;
 
 public interface OptInMFAAuthenticationActionConfig extends Configuration
 {
@@ -29,6 +30,9 @@ public interface OptInMFAAuthenticationActionConfig extends Configuration
     @Description("How long should the `remember my choice` cookie be valid, in days.")
     @DefaultInteger(30)
     int getRememberMyChoiceDaysLimit();
+
+    @Description("A list of authenticator ACRs, which can be configured by the user as their second factor.")
+    List<String> availableAuthenticators();
 
     AccountManager getAccountManager();
 

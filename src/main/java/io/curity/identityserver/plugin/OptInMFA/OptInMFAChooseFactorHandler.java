@@ -28,8 +28,10 @@ import java.time.Duration;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_CHOICE_OF_SECOND_FACTOR;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN;
 
 public final class OptInMFAChooseFactorHandler implements ActionCompletionRequestHandler<ChooseFactorPostRequestModel>
 {
@@ -53,8 +55,24 @@ public final class OptInMFAChooseFactorHandler implements ActionCompletionReques
     @Override
     public Optional<ActionCompletionResult> post(ChooseFactorPostRequestModel request, Response response)
     {
+        boolean isFirstChoice = _sessionManager.get(OPT_IN_MFA_STATE).getValueOfType(String.class).equals(FIRST_CHOICE_OF_SECOND_FACTOR.toString());
+
+        if (isFirstChoice) {
+            return processSecondFactorFirstConfiguration(request);
+        }
+
+        return processSecondFactorChoice(request, response);
+    }
+
+    private Optional<ActionCompletionResult> processSecondFactorFirstConfiguration(ChooseFactorPostRequestModel request) {
         _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
-        _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
+
+        return Optional.of(ActionCompletionResult.complete());
+    }
+
+    private Optional<ActionCompletionResult> processSecondFactorChoice(ChooseFactorPostRequestModel request, Response response) {
+        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
+        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN));
 
         String rememberChoice = request.getRememberChoice();
 

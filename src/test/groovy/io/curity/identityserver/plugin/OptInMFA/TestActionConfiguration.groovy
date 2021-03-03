@@ -33,26 +33,35 @@ class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
 
     @Override
     AccountManager getAccountManager() {
-        return _accountManager
+        _accountManager
     }
 
     @Override
     AuthenticatorDescriptorFactory getAuthenticatorDescriptorFactory() {
-        return _authenticatorDescriptorFactory
+        _authenticatorDescriptorFactory
     }
 
     @Override
     SessionManager getSessionManager() {
-        return _sessionManager
+        _sessionManager
     }
 
     @Override
     int getRememberMyChoiceDaysLimit() {
-        return 30
+        30
     }
 
     @Override
     String id() {
-        return ""
+        ""
+    }
+
+    @Override
+    List<String> availableAuthenticators() {
+        List authenticators = new ArrayList<String>(2)
+        authenticators.add("acr1")
+        authenticators.add("acr2")
+
+        authenticators
     }
 }

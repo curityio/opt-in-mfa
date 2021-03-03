@@ -41,8 +41,9 @@ import java.util.Optional;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AVAILABLE_SECOND_FACTORS_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.AuthenticatorModel.of;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN;
 import static java.util.Collections.EMPTY_MAP;
 import static se.curity.identityserver.sdk.web.ResponseModel.templateResponseModel;
 
@@ -105,7 +106,7 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
         if (rememberChoiceCookie != null && authenticators.containsKey(rememberChoiceCookie.getValue()))
         {
             _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, rememberChoiceCookie.getValue()));
-            _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN));
             return Optional.of(ActionCompletionResult.complete());
         }
 

@@ -12,12 +12,12 @@ public class ChooseFactorPostRequestModel
     public ChooseFactorPostRequestModel(Request request)
     {
         _secondFactor = request.getFormParameterValueOrError("secondFactor");
-        _rememberChoice = request.getFormParameterValueOrError("rememberChoice");
-
         if (_secondFactor == null)
         {
             throw new MissingSecondFactorParameterException();
         }
+
+        _rememberChoice = request.getFormParameterValueOrError("rememberChoice");
     }
 
     public String getSecondFactor()

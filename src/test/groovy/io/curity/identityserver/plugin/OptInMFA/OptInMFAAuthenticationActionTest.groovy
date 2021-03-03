@@ -31,8 +31,10 @@ import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDe
 import spock.lang.Shared
 import spock.lang.Specification
 
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_CHOICE_OF_SECOND_FACTOR
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN
 
 final class OptInMFAAuthenticationActionTest extends Specification {
 
@@ -46,9 +48,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         authenticator.getAcr() >> "email"
     }
 
-    def "should fail authentication when user does not have secondary factors"()
+    def "should return pending result with proper flag set in session when user does not have any secondary factors"()
     {
-        // TODO: this should eventually redirect to registration
         given:
         def sessionManager = getSessionManagerStubWithoutChosenSecondFactor()
 
@@ -62,7 +63,9 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def result = action.apply(authenticationAttributes, null, "transactionId", null)
 
         then:
-        result instanceof AuthenticationActionResult.FailedAuthenticationActionResult
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        result.obligation instanceof RequiredActionCompletion.PromptUser
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_CHOICE_OF_SECOND_FACTOR))
     }
 
     def "should return pending result when user hasn't chosen a secondary factor yet"()
@@ -189,10 +192,10 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def sessionManager = Mock(SessionManager)
 
         if (isSecondFactorChosen) {
-            sessionManager.get(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE) >> Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE)
-            sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> secondFactor
+            sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN)
+            sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> secondFactor
         } else {
-            sessionManager.get(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE) >> null
+            sessionManager.get(OPT_IN_MFA_STATE) >> null
         }
 
         sessionManager

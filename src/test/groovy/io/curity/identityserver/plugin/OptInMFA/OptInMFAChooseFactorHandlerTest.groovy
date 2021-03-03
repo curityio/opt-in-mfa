@@ -15,6 +15,7 @@
  */
 package io.curity.identityserver.plugin.OptInMFA
 
+import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.service.SessionManager
 import se.curity.identityserver.sdk.web.Request
 import se.curity.identityserver.sdk.web.Response
@@ -25,7 +26,9 @@ import spock.lang.Specification
 import java.time.Duration
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN
 
 class OptInMFAChooseFactorHandlerTest extends Specification {
 
@@ -48,6 +51,7 @@ class OptInMFAChooseFactorHandlerTest extends Specification {
     {
         given:
         def sessionManager = Mock(SessionManager)
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
 
         def cookieJar = Mock(ResponseCookies)
         def response = Stub(Response)
@@ -65,7 +69,7 @@ class OptInMFAChooseFactorHandlerTest extends Specification {
 
         then:
         1 * sessionManager.put({ it.getValue().toString() == "email1"; it.getName().getValue() == CHOSEN_SECOND_FACTOR_ATTRIBUTE })
-        1 * sessionManager.put({ it.getName().getValue() == IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE; it.getValue() == [] as Collection })
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN))
         0 * cookieJar.add(_)
     }
 
@@ -73,6 +77,7 @@ class OptInMFAChooseFactorHandlerTest extends Specification {
     {
         given:
         def sessionManager = Stub(SessionManager)
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
 
         def cookieJar = Mock(ResponseCookies)
         def response = Stub(Response)

@@ -33,8 +33,9 @@ import spock.lang.Specification
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AVAILABLE_SECOND_FACTORS_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
 
 class OptInMFAuthenticationActionHandlerTest extends Specification {
 
@@ -45,6 +46,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
                 MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
+
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
     }
 
     def "should not allow POST requests"()

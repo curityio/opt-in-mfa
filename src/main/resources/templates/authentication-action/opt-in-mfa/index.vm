@@ -21,7 +21,13 @@
 #set ($page_symbol = $page_symbol_authenticate_desktop)
 
 #define ($_body)
-    <p>Select the second factor you want to use to verify the login</p>
+    #if($isFirstChoiceOfSecondFactor == true)
+        <p>Choose the second factor that you will from now on use to verify the login.</p>
+    #else
+        <p>Select the second factor you want to use to verify the login.</p>
+    #end
+
+
     <form class="center" action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
         #foreach($_authenticatorMapItem in $authenticators.values())
             <div class="form-field mb1">
@@ -32,6 +38,7 @@
             </div>
         #end
         <input type="hidden" id="secondFactor" name="secondFactor" value="" />
+        <input type="hidden" name="firstChoiceOfSecondFactor" value="$isFirstChoiceOfSecondFactor" />
         <input type="checkbox" id="rememberChoice" name="rememberChoice" /><label for="rememberChoice">Remember my choice of the second factor on this browser for $rememberMyChoiceDays days.</label>
     </form>
 
