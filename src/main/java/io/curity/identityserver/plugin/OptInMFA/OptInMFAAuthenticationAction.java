@@ -58,6 +58,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     public static final String AVAILABLE_SECOND_FACTORS_ATTRIBUTE = ATTRIBUTE_PREFIX + "second-factors";
     public static final String REMEMBER_CHOICE_COOKIE_NAME = "rememberSecondFactorChoice";
     public static final String SCRATCH_CODES = ATTRIBUTE_PREFIX + "scratch-codes";
+    public static final String AUTHENTICATION_TRANSACTION = ATTRIBUTE_PREFIX + "authentication-transaction-id";
 
     private static final Logger _logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     public static final String SECOND_FACTORS = "secondFactors";
@@ -84,13 +85,29 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
                                             String authenticationTransactionId,
                                             AuthenticatorDescriptor authenticatorDescriptor)
     {
-        @Nullable Attribute optInMFAState = _sessionManager.get(OPT_IN_MFA_STATE);
+        @Nullable Attribute optInMFAState = _sessionManager.remove(OPT_IN_MFA_STATE);
 
         OptInMFAState processState = NO_SECOND_FACTOR_CHOSEN;
+        Attribute transactionAttribute = null;
+
         if (optInMFAState == null) {
             _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
+            _sessionManager.put(Attribute.of(AUTHENTICATION_TRANSACTION, authenticationTransactionId));
         } else {
             processState = OptInMFAState.valueOf(optInMFAState.getValueOfType(String.class));
+            transactionAttribute = _sessionManager.get(AUTHENTICATION_TRANSACTION);
+        }
+
+        if (transactionAttribute != null) {
+            if (!transactionAttribute.getValueOfType(String.class).equals(authenticationTransactionId)) {
+                // This is another authentication process, restart the opt-in-mfa action.
+                _sessionManager.remove(AUTHENTICATION_TRANSACTION);
+                _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME);
+                _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE);
+                _sessionManager.remove(SCRATCH_CODES);
+                _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
+                processState = NO_SECOND_FACTOR_CHOSEN;
+            }
         }
 
         switch (processState) {
@@ -104,8 +121,15 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
     private AuthenticationActionResult handleContinueFirstRegistrationOfSecondFactor(AuthenticationAttributes authenticationAttributes)
     {
+        // TODO - how can we be sure that the registration was indeed successful?
         String chosenSecondFactor = _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
-        String chosenSecondFactorName = _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME).getValueOfType(String.class);
+
+        @Nullable Attribute chosenSecondFactorNameAttribute = _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME);
+        String chosenSecondFactorName = chosenSecondFactor;
+        if (chosenSecondFactorNameAttribute != null) {
+            chosenSecondFactorName = chosenSecondFactorNameAttribute.getValueOfType(String.class);
+        }
+
         List<String> scratchCodes = _scratchCodeGenerator.generateScratchCodes();
 
         AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
@@ -123,14 +147,12 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
     private AuthenticationActionResult handleScratchCodesConfirmed(AuthenticationAttributes authenticationAttributes)
     {
-        _sessionManager.remove(OPT_IN_MFA_STATE);
-
         return AuthenticationActionResult.successfulResult(authenticationAttributes);
     }
 
     private AuthenticationActionResult handleFirstChoiceOfSecondFactor()
     {
-        String secondFactorAcr = _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
+        String secondFactorAcr = _sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
 
         try
         {

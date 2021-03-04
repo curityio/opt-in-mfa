@@ -253,11 +253,24 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         assert obligation instanceof RequiredActionCompletion.PromptUser
     }
 
+    def "should use ACR as name for the second factor if user did not set name"()
+    {
+        // TODO - implement
+        given:
+        def b = 1
+
+        when:
+        def a = 2
+
+        then:
+        assert true
+    }
+
     def "should complete action in the final step"()
     {
         given: "The user confirmed the scratch codes"
         def sessionManager = Mock(SessionManager)
-        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SCRATCH_CODES_CONFIRMED)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SCRATCH_CODES_CONFIRMED)
 
         def accountManager = Stub(AccountManager)
         def descriptorFactory = Stub(AuthenticatorDescriptorFactory)
@@ -269,10 +282,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         when: "The authentication action is called"
         def response = action.apply(authenticationAttributes, sessions, "transactionId", null)
 
-        then: "State is removed from the session"
-        1 * sessionManager.remove(OPT_IN_MFA_STATE)
-
-        and: "The action is completed"
+        then: "The action is completed"
         assert response instanceof AuthenticationActionResult.SuccessAuthenticationActionResult
     }
 
@@ -289,8 +299,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
     private def getSessionManagerStubWithSecondFactorChosenForRegistration(String chosenFactor)
     {
         def sessionManager = Mock(SessionManager)
-        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN)
-        sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, chosenFactor)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN)
+        sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, chosenFactor)
 
         sessionManager
     }
@@ -305,17 +315,17 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def sessionManager = Mock(SessionManager)
 
         if (isSecondFactorChosen) {
-            sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN)
+            sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN)
             sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> secondFactor
         }
         else if (isFirstSecondFactorRegistered)
         {
-            sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED)
+            sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED)
             sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> secondFactor
         }
         else
         {
-            sessionManager.get(OPT_IN_MFA_STATE) >> null
+            sessionManager.remove(OPT_IN_MFA_STATE) >> null
         }
 
         sessionManager
