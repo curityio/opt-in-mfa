@@ -8,6 +8,8 @@ public class ChooseFactorPostRequestModel
     private final String _secondFactor;
     @Nullable
     private final String _rememberChoice;
+    @Nullable
+    private final String _secondFactorName;
 
     public ChooseFactorPostRequestModel(Request request)
     {
@@ -18,6 +20,7 @@ public class ChooseFactorPostRequestModel
         }
 
         _rememberChoice = request.getFormParameterValueOrError("rememberChoice");
+        _secondFactorName = request.getFormParameterValueOrError("secondFactorName");
     }
 
     public String getSecondFactor()
@@ -28,5 +31,10 @@ public class ChooseFactorPostRequestModel
     public String getRememberChoice()
     {
         return _rememberChoice;
+    }
+
+    public String getSecondFactorName()
+    {
+        return _secondFactorName;
     }
 }

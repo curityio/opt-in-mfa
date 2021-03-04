@@ -36,6 +36,7 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAct
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN
 
 class OptInMFAuthenticationActionHandlerTest extends Specification {
 
@@ -122,6 +123,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
                 MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN)
+
         def factory = Mock(AuthenticatorDescriptorFactory)
         def handler = new OptInMFAuthenticationActionHandler(factory, sessionManager, configuration, null)
 
@@ -150,8 +153,7 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
 
         1 * sessionManager.put({ it.getName().getValue() == CHOSEN_SECOND_FACTOR_ATTRIBUTE
             it.getValue().toString() == "email1" })
-        1 * sessionManager.put({ it.getName().getValue() == IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE
-            it.getValue() == [] as Collection })
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN))
         0 * response.putViewData("authenticators", _, _)
     }
 

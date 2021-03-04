@@ -21,36 +21,61 @@
 #set ($page_symbol = $page_symbol_authenticate_desktop)
 
 #define ($_body)
-    #if($isFirstChoiceOfSecondFactor == true)
-        <p>Choose the second factor that you will from now on use to verify the login.</p>
+
+    #if($step == "showCodes")
+        <p>
+            Print these codes or save them in a safe place. If you ever lose access to the device you've just configured
+            as your second factor you will need these codes to regain access to your account.
+        </p>
+        <div class="form-field">
+            #foreach($code in $scratchCodes)
+                <p>$code</p>
+            #end
+        </div>
+        <div class="form-field">
+            <a href="$_actionUrl/confirm" class="button button-primary button-fullwidth button-social">
+                I confirm that I saved the codes
+            </a>
+        </div>
     #else
+        #if($isFirstChoiceOfSecondFactor == true)
+        <p>Choose the second factor that you will from now on use to verify the login.</p>
+        #else
         <p>Select the second factor you want to use to verify the login.</p>
-    #end
-
-
-    <form class="center" action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
-        #foreach($_authenticatorMapItem in $authenticators.values())
-            <div class="form-field mb1">
-                <button type="submit" id="$_authenticatorMapItem.acr" onclick="setSecondFactor(event)" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
-                    <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
-                    $_authenticatorMapItem.description
-                </button>
-            </div>
         #end
-        <input type="hidden" id="secondFactor" name="secondFactor" value="" />
-        <input type="hidden" name="firstChoiceOfSecondFactor" value="$isFirstChoiceOfSecondFactor" />
-        <input type="checkbox" id="rememberChoice" name="rememberChoice" /><label for="rememberChoice">Remember my choice of the second factor on this browser for $rememberMyChoiceDays days.</label>
-    </form>
 
-    #parse("fragments/jquery")
 
-    <script type="text/javascript" $!nonceAttr>
-        jQuery(document).ready(function ($) {
-            $(".button-secondary-factor").on("click", function(e) {
-                $("#secondFactor").val(this.id);
+        <form class="center" action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
+            #if($isFirstChoiceOfSecondFactor == true)
+                <div class="form-field mb1">
+                    <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
+                    <input type="text" name="secondFactorName" id="secondFactorName" />
+                    <label for="secondFactorName">Name for the second factor</label>
+                </div>
+            #end
+            #foreach($_authenticatorMapItem in $authenticators.values())
+                <div class="form-field mb1">
+                    <button type="submit" id="$_authenticatorMapItem.acr" onclick="setSecondFactor(event)" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
+                        <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
+                        $_authenticatorMapItem.description
+                    </button>
+                </div>
+            #end
+            <input type="hidden" id="secondFactor" name="secondFactor" value="" />
+            <input type="hidden" name="firstChoiceOfSecondFactor" value="$isFirstChoiceOfSecondFactor" />
+            <input type="checkbox" id="rememberChoice" name="rememberChoice" /><label for="rememberChoice">Remember my choice of the second factor on this browser for $rememberMyChoiceDays days.</label>
+        </form>
+
+            #parse("fragments/jquery")
+
+        <script type="text/javascript" $!nonceAttr>
+            jQuery(document).ready(function ($) {
+                $(".button-secondary-factor").on("click", function(e) {
+                    $("#secondFactor").val(this.id);
+                });
             });
-        });
-    </script>
+        </script>
+    #end
 #end
 
 #parse("layouts/default")

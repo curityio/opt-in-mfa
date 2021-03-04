@@ -18,15 +18,19 @@ package io.curity.identityserver.plugin.OptInMFA.descriptor;
 import io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction;
 import io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationActionConfig;
 import io.curity.identityserver.plugin.OptInMFA.OptInMFAChooseFactorHandler;
+import io.curity.identityserver.plugin.OptInMFA.OptInMFAConfirmCodesHandler;
 import io.curity.identityserver.plugin.OptInMFA.OptInMFAuthenticationActionHandler;
+import io.curity.identityserver.plugin.OptInMFA.ScratchCodeGenerator;
 import se.curity.identityserver.sdk.authenticationaction.AuthenticationAction;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
+import se.curity.identityserver.sdk.plugin.ManagedObject;
 import se.curity.identityserver.sdk.plugin.descriptor.AuthenticationActionPluginDescriptor;
 import se.curity.identityserver.sdk.web.RequestHandlerSet;
 
 import java.util.Collections;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.Optional;
 
 public final class OptInMFAAuthenticationActionDescriptor implements AuthenticationActionPluginDescriptor<OptInMFAAuthenticationActionConfig>
 {
@@ -37,6 +41,7 @@ public final class OptInMFAAuthenticationActionDescriptor implements Authenticat
         Map<String, Class<? extends ActionCompletionRequestHandler<?>>> handlerTypes = new HashMap<>(2);
         handlerTypes.put("index", OptInMFAuthenticationActionHandler.class);
         handlerTypes.put("chooseFactor", OptInMFAChooseFactorHandler.class);
+        handlerTypes.put("confirm", OptInMFAConfirmCodesHandler.class);
         _handlerTypes = Collections.unmodifiableMap(handlerTypes);
     }
 
@@ -68,5 +73,11 @@ public final class OptInMFAAuthenticationActionDescriptor implements Authenticat
     public RequestHandlerSet allowedHandlersForCrossSiteNonSafeRequests()
     {
         return RequestHandlerSet.none();
+    }
+
+    @Override
+    public Optional<ManagedObject<OptInMFAAuthenticationActionConfig>> createManagedObject(OptInMFAAuthenticationActionConfig configuration)
+    {
+        return Optional.of(new ScratchCodeGenerator(configuration));
     }
 }

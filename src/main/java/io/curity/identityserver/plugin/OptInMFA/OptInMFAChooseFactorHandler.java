@@ -28,9 +28,11 @@ import java.time.Duration;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_CHOICE_OF_SECOND_FACTOR;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_CHOSEN;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN;
 
 public final class OptInMFAChooseFactorHandler implements ActionCompletionRequestHandler<ChooseFactorPostRequestModel>
@@ -66,6 +68,8 @@ public final class OptInMFAChooseFactorHandler implements ActionCompletionReques
 
     private Optional<ActionCompletionResult> processSecondFactorFirstConfiguration(ChooseFactorPostRequestModel request) {
         _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
+        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_NAME, request.getSecondFactorName()));
+        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN));
 
         return Optional.of(ActionCompletionResult.complete());
     }

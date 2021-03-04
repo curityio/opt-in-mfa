@@ -35,6 +35,7 @@ import se.curity.identityserver.sdk.web.cookie.Cookie;
 
 import java.lang.invoke.MethodHandles;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -43,6 +44,8 @@ import static io.curity.identityserver.plugin.OptInMFA.AuthenticatorModel.of;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODES;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.CONFIRM_SCRATCH_CODES;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN;
 import static java.util.Collections.EMPTY_MAP;
 import static se.curity.identityserver.sdk.web.ResponseModel.templateResponseModel;
@@ -70,6 +73,24 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
 
     @Override
     public Optional<ActionCompletionResult> get(Request request, Response response)
+    {
+        @Nullable Attribute currentStepAttribute = _sessionManager.get(OPT_IN_MFA_STATE);
+
+        if (currentStepAttribute == null) {
+            _logger.info("No information about the step in session. This should not normally happen!");
+            throw new MissingStepException();
+        }
+
+        OptInMFAState currentStep = OptInMFAState.valueOf(currentStepAttribute.getValueOfType(String.class));
+
+        if (CONFIRM_SCRATCH_CODES.equals(currentStep)) {
+            return prepareShowScratchCodesView(response);
+        }
+
+        return prepareShowFactorsView(request, response);
+    }
+
+    private Optional<ActionCompletionResult> prepareShowFactorsView(Request request, Response response)
     {
         @Nullable Attribute secondFactorsAttribute = _sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE);
 
@@ -110,8 +131,17 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
             return Optional.of(ActionCompletionResult.complete());
         }
 
+        response.putViewData("step", "showFactors", Response.ResponseModelScope.NOT_FAILURE);
         response.putViewData("authenticators", authenticators, Response.ResponseModelScope.NOT_FAILURE);
         response.putViewData("rememberMyChoiceDays", _configuration.getRememberMyChoiceDaysLimit(), Response.ResponseModelScope.NOT_FAILURE);
+
+        return Optional.empty();
+    }
+
+    private Optional<ActionCompletionResult> prepareShowScratchCodesView(Response response)
+    {
+        response.putViewData("step", "showCodes", Response.ResponseModelScope.NOT_FAILURE);
+        response.putViewData("codes", _sessionManager.remove(SCRATCH_CODES).getValueOfType(List.class), Response.ResponseModelScope.NOT_FAILURE);
 
         return Optional.empty();
     }
