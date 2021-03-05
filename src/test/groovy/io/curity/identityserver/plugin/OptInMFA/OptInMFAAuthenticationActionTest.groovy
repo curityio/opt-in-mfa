@@ -20,6 +20,7 @@ import se.curity.identityserver.sdk.attribute.AccountAttributes
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.attribute.AuthenticationAttributes
 import se.curity.identityserver.sdk.attribute.ContextAttributes
+import se.curity.identityserver.sdk.attribute.ListAttributeValue
 import se.curity.identityserver.sdk.authentication.AuthenticatedSessions
 import se.curity.identityserver.sdk.authenticationaction.AuthenticationActionResult
 import se.curity.identityserver.sdk.authenticationaction.completions.RequiredActionCompletion
@@ -33,10 +34,15 @@ import spock.lang.Specification
 
 import java.util.stream.Collectors
 
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_ATTRIBUTE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_NAME
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AUTHENTICATION_TRANSACTION
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REGISTRATION_OF_ANOTHER_SECOND_FACTOR
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_CHOSEN
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_REGISTERED
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_CHOICE_OF_SECOND_FACTOR
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_REGISTERED
@@ -304,6 +310,9 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         1 * sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE)
         1 * sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME)
         1 * sessionManager.remove(SCRATCH_CODES)
+        1 * sessionManager.remove(ANOTHER_SECOND_FACTOR_ATTRIBUTE)
+        1 * sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME)
+        1 * sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR)
 
         and: "The new transaction ID is saved in session and step reset."
         1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
@@ -336,6 +345,146 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         then: "The action returns to the first state and displays list of second factors"
         assert response instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
         1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
+    }
+
+    def "should require authentication with second factor when another second factor is to be registered"()
+    {
+        given: "The user has chosen another second factor."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_CHOSEN)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+
+        and: "The user has a registered second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def factory = Stub(AuthenticatorDescriptorFactory)
+        def configuration = new TestActionConfiguration(accountManager, factory, sessionManager)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        and: "The user is not authenticated with any other second factor"
+        def sessions = authenticatedSessionsStubWithoutSessions()
+
+        when: "When the action is applied."
+        def response = action.apply(authenticationAttributes, sessions, "transactionId", null)
+
+        then: "The user is redirected to start of process (authenticate with a second factor)."
+        assert response instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = response.obligation
+        assert obligation instanceof RequiredActionCompletion.PromptUser
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
+
+        and: "A flag is set in session informing that the user wants to register another second factor."
+        1 * sessionManager.put(Attribute.ofFlag(REGISTRATION_OF_ANOTHER_SECOND_FACTOR))
+    }
+
+    def "should redirect to factor registration for another second factor if user has just authenticated with a previous second factor"()
+    {
+        given: "The user has just authenticated with a second factor."
+        def sessionManager = getSessionManagerStubWithChosenSecondFactor("sms")
+
+        and: "The user has previously chosen to register another second factor."
+        sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR) >> Attribute.ofFlag(REGISTRATION_OF_ANOTHER_SECOND_FACTOR)
+        sessionManager.get(ANOTHER_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(ANOTHER_SECOND_FACTOR_ATTRIBUTE, "email")
+
+        and: "The user has a registered second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        and: "The user is authenticated with the previously registered second factor."
+        def sessions = authenticatedSessionsStubWithSession("sms")
+
+        when: "When the action is applied."
+        def response = action.apply(authenticationAttributes, sessions, "transactionId", null)
+
+        then: "The user is redirected to the registration of the second factor."
+        assert response instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = response.obligation
+        assert obligation instanceof RequiredActionCompletion.RegisterUser
+        def authenticator = obligation.authenticatorDescriptor
+        authenticator.acr == "email"
+
+        and: "The process is moved to next step."
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_REGISTERED))
+    }
+
+    def "should redirect to factor registration for another second factor if user has previously authenticated with any previous second factor"()
+    {
+        given: "The user has started authentication flow with a second factor."
+        def sessionManager = getSessionManagerStubWithoutChosenSecondFactor()
+
+        and: "The user has previously chosen to register another second factor."
+        sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR) >> Attribute.ofFlag(REGISTRATION_OF_ANOTHER_SECOND_FACTOR)
+        sessionManager.get(ANOTHER_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(ANOTHER_SECOND_FACTOR_ATTRIBUTE, "email")
+
+        and: "The user has a registered second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        and: "The user is authenticated with the previously registered second factor."
+        def sessions = authenticatedSessionsStubWithSession("sms")
+
+        when: "When the action is applied."
+        def response = action.apply(authenticationAttributes, sessions, "transactionId", null)
+
+        then: "The user is redirected to the registration of the second factor."
+        assert response instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = response.obligation
+        assert obligation instanceof RequiredActionCompletion.RegisterUser
+        def authenticator = obligation.authenticatorDescriptor
+        authenticator.acr == "email"
+
+        and: "The process is moved to next step."
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_REGISTERED))
+    }
+
+    def "should register another second factor and redirect to successful authentication when registration of another second factor completed"()
+    {
+        given: "The user wants to register another second factor."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_REGISTERED)
+        sessionManager.remove(ANOTHER_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(ANOTHER_SECOND_FACTOR_ATTRIBUTE, "email")
+        sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME) >> Attribute.of(ANOTHER_SECOND_FACTOR_NAME, "My private email")
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+
+        and: "The user is registered, has already a second factor and authenticator exists."
+        def user = getUserAttributes(["My iPhone 11": "sms"], true)
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+
+        def action = new OptInMFAAuthenticationAction(configuration, new ScratchCodeGenerator(configuration))
+
+        and: "The user is authenticated with an existing second factor"
+        def authenticatedSessions = authenticatedSessionsStubWithSession("sms")
+
+        def secondFactors = ["My iPhone 11": "sms", "My private email": "email"] as Map
+        def scratchCodes = scratchCodeGenerator.generateScratchCodes()
+
+        when: "The authentication action is called"
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The second factor should be added to the user's profile and the scratch codes should not be regenerated."
+        1 * accountManager.updateAccount({
+            it.contains("secondFactors")
+            it.get("secondFactors").getValue().size() == 2
+            it.get("secondFactors").getValue().forEach { k,v -> secondFactors.containsKey(k) && secondFactors[k] == v }
+            it.contains("secondFactorCodes")
+            it.get("secondFactorCodes").size() == 10
+            it.get("secondFactorCodes").forEach { code -> scratchCodes.contains(code.getValue()) }
+        })
+
+        and: "The authentication process should be successful."
+        assert result instanceof AuthenticationActionResult.SuccessAuthenticationActionResult
     }
 
     private def getSessionManagerStubWithoutChosenSecondFactor()
@@ -400,13 +549,18 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         descriptor
     }
 
-    private def getUserAttributes(secondFactors)
+    private def getUserAttributes(secondFactors = null, includeScratchCodes = false)
     {
         def user = AccountAttributes.fromMap(["id": "1234", "subject": username])
         if (secondFactors)
         {
             user = AccountAttributes.fromMap(["id": "1234", "subject": username, "secondFactors": secondFactors])
         }
+
+        if (includeScratchCodes) {
+            user = user.with(Attribute.of("secondFactorCodes", ListAttributeValue.of(scratchCodeGenerator.generateScratchCodes())))
+        }
+
         user
     }
 

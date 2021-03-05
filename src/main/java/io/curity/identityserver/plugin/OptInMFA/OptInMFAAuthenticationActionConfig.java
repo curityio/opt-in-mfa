@@ -19,6 +19,7 @@ import se.curity.identityserver.sdk.config.Configuration;
 import se.curity.identityserver.sdk.config.annotation.DefaultInteger;
 import se.curity.identityserver.sdk.config.annotation.Description;
 import se.curity.identityserver.sdk.service.AccountManager;
+import se.curity.identityserver.sdk.service.ExceptionFactory;
 import se.curity.identityserver.sdk.service.SessionManager;
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory;
 
@@ -32,11 +33,13 @@ public interface OptInMFAAuthenticationActionConfig extends Configuration
     int getRememberMyChoiceDaysLimit();
 
     @Description("A list of authenticator ACRs, which can be configured by the user as their second factor.")
-    List<String> availableAuthenticators();
+    List<String> getAvailableAuthenticators();
 
     AccountManager getAccountManager();
 
     AuthenticatorDescriptorFactory getAuthenticatorDescriptorFactory();
 
     SessionManager getSessionManager();
+
+    ExceptionFactory getExceptionFactory();
 }

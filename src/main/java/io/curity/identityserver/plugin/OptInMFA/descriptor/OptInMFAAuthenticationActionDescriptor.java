@@ -17,11 +17,11 @@ package io.curity.identityserver.plugin.OptInMFA.descriptor;
 
 import io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction;
 import io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationActionConfig;
+import io.curity.identityserver.plugin.OptInMFA.ScratchCodeGenerator;
 import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFAChooseFactorHandler;
 import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFAConfirmCodesHandler;
 import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFARegisterAnotherFactorHandler;
 import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFAuthenticationActionHandler;
-import io.curity.identityserver.plugin.OptInMFA.ScratchCodeGenerator;
 import se.curity.identityserver.sdk.authenticationaction.AuthenticationAction;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
 import se.curity.identityserver.sdk.plugin.ManagedObject;
@@ -43,6 +43,7 @@ public final class OptInMFAAuthenticationActionDescriptor implements Authenticat
         handlerTypes.put("index", OptInMFAuthenticationActionHandler.class);
         handlerTypes.put("chooseFactor", OptInMFAChooseFactorHandler.class);
         handlerTypes.put("confirm", OptInMFAConfirmCodesHandler.class);
+        handlerTypes.put("register", OptInMFARegisterAnotherFactorHandler.class);
         _handlerTypes = Collections.unmodifiableMap(handlerTypes);
     }
 

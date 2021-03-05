@@ -16,6 +16,7 @@
 package io.curity.identityserver.plugin.OptInMFA
 
 import se.curity.identityserver.sdk.service.AccountManager
+import se.curity.identityserver.sdk.service.ExceptionFactory
 import se.curity.identityserver.sdk.service.SessionManager
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory
 
@@ -61,11 +62,16 @@ class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
     }
 
     @Override
-    List<String> availableAuthenticators() {
+    List<String> getAvailableAuthenticators() {
         List authenticators = new ArrayList<String>(2)
         authenticators.add("acr1")
         authenticators.add("acr2")
 
         authenticators
+    }
+
+    @Override
+    ExceptionFactory getExceptionFactory() {
+        return null
     }
 }
