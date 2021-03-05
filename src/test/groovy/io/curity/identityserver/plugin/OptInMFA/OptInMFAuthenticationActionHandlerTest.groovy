@@ -15,6 +15,7 @@
  */
 package io.curity.identityserver.plugin.OptInMFA
 
+import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFAuthenticationActionHandler
 import se.curity.identityserver.sdk.NonEmptyList
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.attribute.MapAttributeValue

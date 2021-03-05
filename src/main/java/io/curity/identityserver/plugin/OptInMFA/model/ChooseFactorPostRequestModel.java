@@ -13,8 +13,9 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package io.curity.identityserver.plugin.OptInMFA;
+package io.curity.identityserver.plugin.OptInMFA.model;
 
+import io.curity.identityserver.plugin.OptInMFA.exception.MissingSecondFactorParameterException;
 import se.curity.identityserver.sdk.Nullable;
 import se.curity.identityserver.sdk.web.Request;
 

@@ -13,8 +13,13 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package io.curity.identityserver.plugin.OptInMFA;
+package io.curity.identityserver.plugin.OptInMFA.handler;
 
+import io.curity.identityserver.plugin.OptInMFA.exception.MissingStepException;
+import io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationActionConfig;
+import io.curity.identityserver.plugin.OptInMFA.OptInMFAState;
+import io.curity.identityserver.plugin.OptInMFA.exception.SecondFactorsInvalidException;
+import io.curity.identityserver.plugin.OptInMFA.model.AuthenticatorModel;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.curity.identityserver.sdk.NonEmptyList;
@@ -40,7 +45,7 @@ import java.util.Map;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AVAILABLE_SECOND_FACTORS_ATTRIBUTE;
-import static io.curity.identityserver.plugin.OptInMFA.AuthenticatorModel.of;
+import static io.curity.identityserver.plugin.OptInMFA.model.AuthenticatorModel.of;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
@@ -50,12 +55,11 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACT
 import static java.util.Collections.EMPTY_MAP;
 import static se.curity.identityserver.sdk.web.ResponseModel.templateResponseModel;
 
-public final class OptInMFAuthenticationActionHandler implements ActionCompletionRequestHandler<Request>
+public final class OptInMFAuthenticationActionHandler extends OptInMFAHandler implements ActionCompletionRequestHandler<Request>
 {
     private static final Logger _logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
 
     private final AuthenticatorDescriptorFactory _authenticatorDescriptorFactory;
-    private final SessionManager _sessionManager;
     private final OptInMFAAuthenticationActionConfig _configuration;
     private final ExceptionFactory _exceptionFactory;
 
@@ -65,8 +69,8 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
             OptInMFAAuthenticationActionConfig configuration,
             ExceptionFactory exceptionFactory)
     {
+        super(sessionManager);
         _authenticatorDescriptorFactory = factory;
-        _sessionManager = sessionManager;
         _configuration = configuration;
         _exceptionFactory = exceptionFactory;
     }
@@ -134,14 +138,16 @@ public final class OptInMFAuthenticationActionHandler implements ActionCompletio
         response.putViewData("step", "showFactors", Response.ResponseModelScope.NOT_FAILURE);
         response.putViewData("authenticators", authenticators, Response.ResponseModelScope.NOT_FAILURE);
         response.putViewData("rememberMyChoiceDays", _configuration.getRememberMyChoiceDaysLimit(), Response.ResponseModelScope.NOT_FAILURE);
+        response.putViewData("isFirstChoiceOfSecondFactor", isInFirstChoiceState(), Response.ResponseModelScope.NOT_FAILURE);
 
         return Optional.empty();
     }
 
     private Optional<ActionCompletionResult> prepareShowScratchCodesView(Response response)
     {
+        List<String> codes = _sessionManager.remove(SCRATCH_CODES).getValueOfType(List.class);
         response.putViewData("step", "showCodes", Response.ResponseModelScope.NOT_FAILURE);
-        response.putViewData("codes", _sessionManager.remove(SCRATCH_CODES).getValueOfType(List.class), Response.ResponseModelScope.NOT_FAILURE);
+        response.putViewData("scratchCodes", codes, Response.ResponseModelScope.NOT_FAILURE);
 
         return Optional.empty();
     }

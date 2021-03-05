@@ -1,5 +1,5 @@
 /*
- *  Copyright 2020 Curity AB
+ *  Copyright 2021 Curity AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -13,12 +13,12 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package io.curity.identityserver.plugin.OptInMFA;
+package io.curity.identityserver.plugin.OptInMFA.exception;
 
-public class MissingSecondFactorParameterException extends RuntimeException
+public class SecondFactorsInvalidException extends RuntimeException
 {
-    public MissingSecondFactorParameterException()
+    public SecondFactorsInvalidException()
     {
-        super("`secondFactor` parameter is required.");
+        super("There was a problem with the authentication. Please start the process again.");
     }
 }

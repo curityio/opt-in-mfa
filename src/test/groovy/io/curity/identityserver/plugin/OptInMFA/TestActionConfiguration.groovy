@@ -21,9 +21,9 @@ import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDe
 
 class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
 {
-    private final AccountManager _accountManager;
-    private final AuthenticatorDescriptorFactory _authenticatorDescriptorFactory;
-    private final SessionManager _sessionManager;
+    private AccountManager _accountManager
+    private final AuthenticatorDescriptorFactory _authenticatorDescriptorFactory
+    private final SessionManager _sessionManager
 
     TestActionConfiguration(AccountManager accountManager, AuthenticatorDescriptorFactory authenticatorDescriptorFactory, SessionManager sessionManager) {
         _accountManager = accountManager
@@ -34,6 +34,10 @@ class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
     @Override
     AccountManager getAccountManager() {
         _accountManager
+    }
+
+    void setAccountManager(AccountManager accountManager) {
+        _accountManager = accountManager
     }
 
     @Override

@@ -13,11 +13,11 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package io.curity.identityserver.plugin.OptInMFA;
+package io.curity.identityserver.plugin.OptInMFA.exception;
 
-public class SecondFactorsInvalidException extends RuntimeException
+public class MissingStepException extends RuntimeException
 {
-    public SecondFactorsInvalidException()
+    public MissingStepException()
     {
         super("There was a problem with the authentication. Please start the process again.");
     }

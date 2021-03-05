@@ -44,7 +44,6 @@
         <p>Select the second factor you want to use to verify the login.</p>
         #end
 
-
         <form class="center" action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
             #if($isFirstChoiceOfSecondFactor == true)
                 <div class="form-field mb1">
@@ -62,11 +61,16 @@
                 </div>
             #end
             <input type="hidden" id="secondFactor" name="secondFactor" value="" />
-            <input type="hidden" name="firstChoiceOfSecondFactor" value="$isFirstChoiceOfSecondFactor" />
             <input type="checkbox" id="rememberChoice" name="rememberChoice" /><label for="rememberChoice">Remember my choice of the second factor on this browser for $rememberMyChoiceDays days.</label>
         </form>
 
-            #parse("fragments/jquery")
+        #if($isFirstChoiceOfSecondFactor != true)
+            <div class="form-field">
+                <a href="$_actionUrl/register">Add another second factor</a>
+            </div>
+        #end
+
+        #parse("fragments/jquery")
 
         <script type="text/javascript" $!nonceAttr>
             jQuery(document).ready(function ($) {

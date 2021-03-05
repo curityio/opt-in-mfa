@@ -98,23 +98,21 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
             transactionAttribute = _sessionManager.get(AUTHENTICATION_TRANSACTION);
         }
 
-        if (transactionAttribute != null) {
-            if (!transactionAttribute.getValueOfType(String.class).equals(authenticationTransactionId)) {
-                // This is another authentication process, restart the opt-in-mfa action.
-                _sessionManager.remove(AUTHENTICATION_TRANSACTION);
-                _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME);
-                _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE);
-                _sessionManager.remove(SCRATCH_CODES);
-                _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
-                processState = NO_SECOND_FACTOR_CHOSEN;
-            }
+        if (isInvalidState(transactionAttribute, authenticationTransactionId, processState)) {
+            // This is another authentication process, restart the opt-in-mfa action.
+            _sessionManager.put(Attribute.of(AUTHENTICATION_TRANSACTION, authenticationTransactionId));
+            _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME);
+            _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE);
+            _sessionManager.remove(SCRATCH_CODES);
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
+            processState = NO_SECOND_FACTOR_CHOSEN;
         }
 
         switch (processState) {
             case SECOND_FACTOR_CHOSEN: return handleActionWhenSecondFactorChosen(authenticatedSessions, authenticationAttributes);
             case FIRST_SECOND_FACTOR_CHOSEN: return handleFirstChoiceOfSecondFactor();
             case FIRST_SECOND_FACTOR_REGISTERED: return handleContinueFirstRegistrationOfSecondFactor(authenticationAttributes);
-            case SCRATCH_CODES_CONFIRMED: return handleScratchCodesConfirmed(authenticationAttributes);
+            case SCRATCH_CODES_CONFIRMED: return handleScratchCodesConfirmed(authenticationAttributes, authenticatedSessions);
             default: return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
         }
     }
@@ -145,9 +143,10 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         return AuthenticationActionResult.pendingResult(prompt());
     }
 
-    private AuthenticationActionResult handleScratchCodesConfirmed(AuthenticationAttributes authenticationAttributes)
+    private AuthenticationActionResult handleScratchCodesConfirmed(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
-        return AuthenticationActionResult.successfulResult(authenticationAttributes);
+        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
+        return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
     }
 
     private AuthenticationActionResult handleFirstChoiceOfSecondFactor()
@@ -194,6 +193,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     {
         AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
 
+        // TODO - handle situation when user not registered
         Map<String, String> secondFactors = user.getOptionalValue(SECOND_FACTORS, Map.class);
 
         if (secondFactors == null || secondFactors.isEmpty())
@@ -212,5 +212,15 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         }
 
         return AuthenticationActionResult.pendingResult(prompt());
+    }
+
+    private boolean isInvalidState(@Nullable Attribute transactionAttribute, String transactionId, OptInMFAState currentState)
+    {
+        if (transactionAttribute != null && !transactionAttribute.getValueOfType(String.class).equals(transactionId))
+        {
+            return true;
+        }
+
+        return transactionAttribute == null && currentState != NO_SECOND_FACTOR_CHOSEN;
     }
 }

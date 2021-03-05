@@ -33,12 +33,14 @@ import spock.lang.Specification
 
 import java.util.stream.Collectors
 
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AUTHENTICATION_TRANSACTION
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_CHOICE_OF_SECOND_FACTOR
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_REGISTERED
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SCRATCH_CODES_CONFIRMED
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODES
@@ -58,7 +60,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         authenticator.getAcr() >> "email"
     }
 
-    def "should return pending result with proper flag set in session when user does not have any secondary factors"()
+    def "should return pending result with proper flag set in session when user does not have any secondary factors (start the registration flow)"()
     {
         given:
         def sessionManager = getSessionManagerStubWithoutChosenSecondFactor()
@@ -255,24 +257,73 @@ final class OptInMFAAuthenticationActionTest extends Specification {
 
     def "should use ACR as name for the second factor if user did not set name"()
     {
-        // TODO - implement
-        given:
-        def b = 1
+        given: "The user has just registered a second factor without specifying the name."
+        def sessionManager = getSessionManagerStubWithFirstSecondFactorRegistered("email")
+        sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME) >> null
 
-        when:
-        def a = 2
+        and: "The user is registered and authenticator exists."
+        def user = getUserAttributes()
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def authenticatedSessions = authenticatedSessionsStubWithoutSessions()
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
 
-        then:
-        assert true
+        def secondFactors = ["email": "email"] as Map
+
+        when: "The authentication action is called"
+        action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The second factor should be saved in the user profile using acr as the name."
+
+        1 * accountManager.updateAccount({
+            it.contains("secondFactors")
+            it.get("secondFactors").getValue().forEach { k, v -> secondFactors.containsKey(k) && secondFactors[k] == v }
+        })
     }
 
-    def "should complete action in the final step"()
+    def "should restart process if transactionId changed"()
     {
-        given: "The user confirmed the scratch codes"
+        given: "There is a state in session and some transaction ID."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "someTransactionId")
+
+        and: "The action is configured with proper objects."
+        def user = getUserAttributes([])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def configuration = new TestActionConfiguration(accountManager, null, sessionManager)
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        def authenticatedSessions = Stub(AuthenticatedSessions)
+
+        when: "The action is called with a different transaction ID."
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "otherTransactionId", null)
+
+        then: "All session entries connected to the opt-in-mfa flow are cleared."
+        1 * sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE)
+        1 * sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME)
+        1 * sessionManager.remove(SCRATCH_CODES)
+
+        and: "The new transaction ID is saved in session and step reset."
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
+        1 * sessionManager.put(Attribute.of(AUTHENTICATION_TRANSACTION, "otherTransactionId"))
+
+        and: "The user is displayed the first screen of the flow."
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = result.obligation
+        assert obligation instanceof RequiredActionCompletion.PromptUser
+    }
+
+    def "should redirect user back to second factor choice after successful completion of registering first second factor"()
+    {
+        given: "The user confirmed the scratch codes after registration of first second factor"
         def sessionManager = Mock(SessionManager)
         sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SCRATCH_CODES_CONFIRMED)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
 
-        def accountManager = Stub(AccountManager)
+        def user = getUserAttributes(["My email": "email"])
+        def accountManager = getAccountManagerStubReturningUser(user)
         def descriptorFactory = Stub(AuthenticatorDescriptorFactory)
         def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
         def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
@@ -282,8 +333,9 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         when: "The authentication action is called"
         def response = action.apply(authenticationAttributes, sessions, "transactionId", null)
 
-        then: "The action is completed"
-        assert response instanceof AuthenticationActionResult.SuccessAuthenticationActionResult
+        then: "The action returns to the first state and displays list of second factors"
+        assert response instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
     }
 
     private def getSessionManagerStubWithoutChosenSecondFactor()
@@ -301,6 +353,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def sessionManager = Mock(SessionManager)
         sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN)
         sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, chosenFactor)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
 
         sessionManager
     }
@@ -327,6 +380,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         {
             sessionManager.remove(OPT_IN_MFA_STATE) >> null
         }
+
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
 
         sessionManager
     }
