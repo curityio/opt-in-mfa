@@ -39,10 +39,12 @@ import se.curity.identityserver.sdk.web.Response;
 import se.curity.identityserver.sdk.web.cookie.Cookie;
 
 import java.lang.invoke.MethodHandles;
-import java.util.HashMap;
+import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.Set;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AVAILABLE_SECOND_FACTORS_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.model.AuthenticatorModel.of;
@@ -112,13 +114,15 @@ public final class OptInMFAuthenticationActionHandler extends OptInMFAHandler im
 
         Map<String, Object> secondFactors = ((MapAttributeValue) value).getValue();
 
-        Map<String, AuthenticatorModel> authenticators = new HashMap<>(secondFactors.size());
+        List<AuthenticatorModel> authenticators = new ArrayList<>(secondFactors.size());
+        Set<String> secondFactorAcrs = new HashSet<>(secondFactors.size());
 
         secondFactors.forEach((name, acr) -> {
             try
             {
                 NonEmptyList<AuthenticatorDescriptor> descriptor = _authenticatorDescriptorFactory.getAuthenticatorDescriptors((String) acr);
-                authenticators.put((String) acr, of(descriptor.getFirst(), name));
+                authenticators.add(of(descriptor.getFirst(), name));
+                secondFactorAcrs.add((String) acr);
             }
             catch (AuthenticatorNotConfiguredException e)
             {
@@ -128,7 +132,7 @@ public final class OptInMFAuthenticationActionHandler extends OptInMFAHandler im
 
         Cookie rememberChoiceCookie = request.getCookies().getFirst(REMEMBER_CHOICE_COOKIE_NAME);
 
-        if (rememberChoiceCookie != null && authenticators.containsKey(rememberChoiceCookie.getValue()))
+        if (rememberChoiceCookie != null && secondFactorAcrs.contains(rememberChoiceCookie.getValue()))
         {
             _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, rememberChoiceCookie.getValue()));
             _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN));

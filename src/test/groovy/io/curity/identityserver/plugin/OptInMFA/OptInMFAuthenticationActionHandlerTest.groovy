@@ -42,12 +42,12 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACT
 class OptInMFAuthenticationActionHandlerTest extends Specification {
 
     @Shared def sessionManager = Stub(SessionManager)
-    def configuration = new TestActionConfiguration(null, null, null)
+    def configuration = new TestActionConfiguration()
 
     def setupSpec() {
         sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
-                MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
+                MapAttributeValue.of(["My email": "email1", "My sms": "sms1", "My other sms": "sms1"]))
 
         sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
     }
@@ -86,8 +86,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         then:
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("email1") >> authenticatorList
-        1 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
-        1 * response.putViewData("authenticators", _ as Map, _)
+        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        1 * response.putViewData("authenticators", { it.size() == 3 }, _)
     }
 
     def "should remove authenticator from rendered list if authenticator no longer present in system"()
@@ -112,7 +112,7 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         noExceptionThrown()
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("email1") >> authenticatorList
-        1 * factory.getAuthenticatorDescriptors("sms1") >> { throw new AuthenticatorNotConfiguredException("") }
+        2 * factory.getAuthenticatorDescriptors("sms1") >> { throw new AuthenticatorNotConfiguredException("") }
         // The resulting authenticator map should only have 1 element
         1 * response.putViewData("authenticators", { it.size() == 1 }, _)
     }
@@ -182,8 +182,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         !result.isPresent()
 
         1 * factory.getAuthenticatorDescriptors("email1") >> { throw new AuthenticatorNotConfiguredException("") }
-        1 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
 
-        1 * response.putViewData("authenticators", { it.size() == 1 }, _)
+        1 * response.putViewData("authenticators", { it.size() == 2 }, _)
     }
 }

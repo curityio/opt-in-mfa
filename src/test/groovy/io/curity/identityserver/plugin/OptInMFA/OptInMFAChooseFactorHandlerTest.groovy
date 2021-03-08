@@ -38,7 +38,7 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECON
 
 class OptInMFAChooseFactorHandlerTest extends Specification {
 
-    def configuration = new TestActionConfiguration(null, null, null)
+    def configuration = new TestActionConfiguration()
 
     def "should throw exception when secondFactor parameter missing in request"()
     {

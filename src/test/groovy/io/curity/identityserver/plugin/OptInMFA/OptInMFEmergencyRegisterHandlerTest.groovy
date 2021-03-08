@@ -1,5 +1,5 @@
 /*
- *  Copyright 2020 Curity AB
+ *  Copyright 2021 Curity AB
  *
  *  Licensed under the Apache License, Version 2.0 (the "License");
  *  you may not use this file except in compliance with the License.
@@ -15,8 +15,8 @@
  */
 package io.curity.identityserver.plugin.OptInMFA
 
-import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFARegisterAnotherFactorHandler
-import io.curity.identityserver.plugin.OptInMFA.model.ChooseAnotherFactorRequestModel
+import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFAEmergencyRegisterFactorHandler
+import io.curity.identityserver.plugin.OptInMFA.model.EmergencyFactorRegistrationRequestModel
 import se.curity.identityserver.sdk.NonEmptyList
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionResult
@@ -29,13 +29,15 @@ import se.curity.identityserver.sdk.web.Response
 import spock.lang.Shared
 import spock.lang.Specification
 
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_ATTRIBUTE
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_NAME
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.EMERGENCY_REGISTRATION_OF_SECOND_FACTOR
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_CHOSEN
 
-class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
+class OptInMFEmergencyRegisterHandlerTest extends Specification {
 
     @Shared def sessionManager = Stub(SessionManager)
     def configuration = new TestActionConfiguration()
@@ -48,10 +50,10 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
     {
         given: "All the necessary object are prepared."
         def factory = Mock(AuthenticatorDescriptorFactory)
-        def handler = new OptInMFARegisterAnotherFactorHandler(factory, sessionManager, configuration, null)
+        def handler = new OptInMFAEmergencyRegisterFactorHandler(factory, sessionManager, configuration, null)
 
         def request = Stub(Request)
-        def model = new ChooseAnotherFactorRequestModel(request)
+        def model = new EmergencyFactorRegistrationRequestModel(request)
         def response = Mock(Response)
 
         def authenticatorList = NonEmptyList.of(Stub(AuthenticatorDescriptor))
@@ -70,11 +72,11 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
     {
         given: "All the necessary object are prepared."
         def factory = Mock(AuthenticatorDescriptorFactory)
-        def handler = new OptInMFARegisterAnotherFactorHandler(factory, sessionManager, configuration, null)
+        def handler = new OptInMFAEmergencyRegisterFactorHandler(factory, sessionManager, configuration, null)
 
         def response = Mock(Response)
         def request = Stub(Request)
-        def model = new ChooseAnotherFactorRequestModel(request)
+        def model = new EmergencyFactorRegistrationRequestModel(request)
 
         def authenticatorList = NonEmptyList.of(Stub(AuthenticatorDescriptor))
 
@@ -91,28 +93,31 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
 
     def "should set user's choice in session and continue with the flow"()
     {
-        given: "The user has chosen another factor to register."
+        given: "The user has chosen a new factor to register."
         def sessionManager = Mock(SessionManager)
         sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
 
         def response = Stub(Response)
         def request = Stub(Request)
+        request.getFormParameterValueOrError("scratchCode") >> "abcdef"
         request.getFormParameterValueOrError("secondFactor") >> "email1"
         request.getFormParameterValueOrError("secondFactorName") >> "My private email"
-        def requestModel = new ChooseAnotherFactorRequestModel(request)
+        def requestModel = new EmergencyFactorRegistrationRequestModel(request)
 
         def factory = Mock(AuthenticatorDescriptorFactory)
-        def handler = new OptInMFARegisterAnotherFactorHandler(factory, sessionManager, configuration, null)
+        def handler = new OptInMFAEmergencyRegisterFactorHandler(factory, sessionManager, configuration, null)
 
         when: "The post endpoint is called."
         def result = handler.post(requestModel, response)
 
         then: "Information about the chosen factor are set in session."
-        1 * sessionManager.put({ it.getValue().toString() == "email1"; it.getName().getValue() == ANOTHER_SECOND_FACTOR_ATTRIBUTE })
-        1 * sessionManager.put(Attribute.of(ANOTHER_SECOND_FACTOR_NAME, "My private email"))
+        1 * sessionManager.put({ it.getValue().toString() == "email1"; it.getName().getValue() == CHOSEN_SECOND_FACTOR_ATTRIBUTE })
+        1 * sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_NAME, "My private email"))
+        1 * sessionManager.put(Attribute.of(SCRATCH_CODE, "abcdef"))
 
-        and: "The process is moved to the next step."
-        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_CHOSEN))
+        and: "The process is moved to the next step with the emergency flag."
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN))
+        1 * sessionManager.put(Attribute.ofFlag(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR))
 
         and: "The user is redirected to the action again."
         assert result.isPresent()

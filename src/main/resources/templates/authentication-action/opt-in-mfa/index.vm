@@ -52,7 +52,7 @@
                     <label for="secondFactorName">Name for the second factor</label>
                 </div>
             #end
-            #foreach($_authenticatorMapItem in $authenticators.values())
+            #foreach($_authenticatorMapItem in $authenticators)
                 <div class="form-field mb1">
                     <button type="submit" id="$_authenticatorMapItem.acr" onclick="setSecondFactor(event)" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
                         <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
@@ -62,13 +62,16 @@
             #end
             <input type="hidden" id="secondFactor" name="secondFactor" value="" />
             <input type="checkbox" id="rememberChoice" name="rememberChoice" /><label for="rememberChoice">Remember my choice of the second factor on this browser for $rememberMyChoiceDays days.</label>
-        </form>
 
-        #if($isFirstChoiceOfSecondFactor != true)
-            <div class="form-field">
-                <a href="$_actionUrl/register">Add another second factor</a>
-            </div>
-        #end
+            #if($isFirstChoiceOfSecondFactor != true)
+                <div class="form-field mb1">
+                    <a href="$_actionUrl/register">Add another second factor</a>
+                </div>
+                <div class="form-field">
+                    <a href="$_actionUrl/emergencyRegister">Register another factor with a recovery code</a>
+                </div>
+            #end
+        </form>
 
         #parse("fragments/jquery")
 

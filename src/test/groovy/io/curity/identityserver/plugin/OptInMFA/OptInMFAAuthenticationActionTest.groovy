@@ -15,17 +15,21 @@
  */
 package io.curity.identityserver.plugin.OptInMFA
 
+import org.apache.commons.codec.digest.DigestUtils
 import se.curity.identityserver.sdk.NonEmptyList
 import se.curity.identityserver.sdk.attribute.AccountAttributes
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.attribute.AuthenticationAttributes
 import se.curity.identityserver.sdk.attribute.ContextAttributes
 import se.curity.identityserver.sdk.attribute.ListAttributeValue
+import se.curity.identityserver.sdk.attribute.MapAttributeValue
 import se.curity.identityserver.sdk.authentication.AuthenticatedSessions
 import se.curity.identityserver.sdk.authenticationaction.AuthenticationActionResult
 import se.curity.identityserver.sdk.authenticationaction.completions.RequiredActionCompletion
 import se.curity.identityserver.sdk.errors.AuthenticatorNotConfiguredException
+import se.curity.identityserver.sdk.errors.ErrorCode
 import se.curity.identityserver.sdk.service.AccountManager
+import se.curity.identityserver.sdk.service.ExceptionFactory
 import se.curity.identityserver.sdk.service.SessionManager
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptor
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory
@@ -39,8 +43,11 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAct
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AUTHENTICATION_TRANSACTION
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.EMERGENCY_REGISTRATION_OF_SECOND_FACTOR
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REGISTRATION_OF_ANOTHER_SECOND_FACTOR
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SECOND_FACTOR_CODES
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_REGISTERED
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_CHOICE_OF_SECOND_FACTOR
@@ -251,6 +258,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
             it.get("secondFactors").getValue().forEach { k,v -> secondFactors.containsKey(k) && secondFactors[k] == v }
             it.contains("secondFactorCodes")
             it.get("secondFactorCodes").size() == 10
+            // Check that the codes in profile are different from raw codes from the generator - so they must have been hashed.
             it.get("secondFactorCodes").forEach { code -> !scratchCodes.contains(code) }
         })
 
@@ -313,6 +321,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         1 * sessionManager.remove(ANOTHER_SECOND_FACTOR_ATTRIBUTE)
         1 * sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME)
         1 * sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR)
+        1 * sessionManager.remove(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
+        1 * sessionManager.remove(SCRATCH_CODE)
 
         and: "The new transaction ID is saved in session and step reset."
         1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
@@ -468,7 +478,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def authenticatedSessions = authenticatedSessionsStubWithSession("sms")
 
         def secondFactors = ["My iPhone 11": "sms", "My private email": "email"] as Map
-        def scratchCodes = scratchCodeGenerator.generateScratchCodes()
+        def scratchCodes = hashedCodes()
 
         when: "The authentication action is called"
         def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
@@ -480,11 +490,172 @@ final class OptInMFAAuthenticationActionTest extends Specification {
             it.get("secondFactors").getValue().forEach { k,v -> secondFactors.containsKey(k) && secondFactors[k] == v }
             it.contains("secondFactorCodes")
             it.get("secondFactorCodes").size() == 10
+            // Scratch codes in user profile are generated with test generator, but the action gets a "real" generator.
+            // In the resulting profile the user should still have the codes from the test generator, that's how we know
+            // the codes where not changed. This trick is used because it's hard to otherwise mock a Managed Object.
             it.get("secondFactorCodes").forEach { code -> scratchCodes.contains(code.getValue()) }
         })
 
         and: "The authentication process should be successful."
         assert result instanceof AuthenticationActionResult.SuccessAuthenticationActionResult
+    }
+
+    def "should throw Bad Request exception when trying to register a second factor with invalid scratch code"()
+    {
+        given: "The user wants to register a new second factor with a scratch code."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.get(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR) >> Attribute.ofFlag(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
+
+
+        and: "The entered scratch code is wrong."
+        sessionManager.remove(SCRATCH_CODE) >> Attribute.of(SCRATCH_CODE, "wrongCode")
+
+        and: "The user is registered."
+        def user = getUserAttributes(["My iPhone 11": "sms"], true)
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def exceptionFactory = Mock(ExceptionFactory)
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, exceptionFactory)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        def sessions = authenticatedSessionsStubWithoutSessions()
+
+        when: "The action is called."
+        action.apply(authenticationAttributes, sessions, "transactionId", null)
+
+        then:
+        thrown RuntimeException
+        1 * exceptionFactory.badRequestException(ErrorCode.INVALID_INPUT) >> new RuntimeException()
+    }
+
+    def "should redirect to registration of a new second factor when scratch code is valid and remove the code from user's account"()
+    {
+        given: "The user wants to register a new second factor with a scratch code."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.get(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR) >> Attribute.ofFlag(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
+
+        sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(ANOTHER_SECOND_FACTOR_ATTRIBUTE, "email")
+
+        and: "The entered scratch code is valid."
+        sessionManager.remove(SCRATCH_CODE) >> Attribute.of(SCRATCH_CODE, "1")
+
+        and: "The user is registered and authenticator exists."
+        def user = getUserAttributes(["My iPhone": "sms"], true)
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def authenticatedSessions = authenticatedSessionsStubWithoutSessions()
+
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        def hashedCode = DigestUtils.sha256Hex("1")
+
+        when: "The authentication action is called"
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The user should be redirected to registration action of the chosen authenticator"
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = result.obligation
+        assert obligation instanceof RequiredActionCompletion.RegisterUser
+
+        def authenticatorDescriptor = obligation.authenticatorDescriptor
+        authenticatorDescriptor.getAcr() == "email"
+
+        and: "The state should be moved to next step."
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED))
+
+        and: "The used scratch code should be removed from user's profile."
+        1 * accountManager.updateAccount({
+            it.contains("secondFactorCodes")
+            it.get("secondFactorCodes").size() == 9
+            !it.get("secondFactorCodes").contains(hashedCode)
+        })
+    }
+
+    def "when processing registered second factor confirmed with a scratch code, should update list of second factors and not issue new codes, then redirect to start of process"()
+    {
+        given: "The user has just registered a second factor using a scratch code."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, "email")
+        sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME) >> Attribute.of(CHOSEN_SECOND_FACTOR_NAME, "My private mail")
+        sessionManager.get(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR) >> Attribute.ofFlag(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
+
+        and: "The user is registered and authenticator exists"
+        def user = getUserAttributes(["My iPhone": "sms"], true)
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def authenticatedSessions = authenticatedSessionsStubWithoutSessions()
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+
+        def action = new OptInMFAAuthenticationAction(configuration, new ScratchCodeGenerator(configuration))
+
+        def secondFactors = ["My iPhone": "sms", "My private mail": "email"] as Map
+        def scratchCodes = hashedCodes()
+
+        when: "The authentication action is called"
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The list of second factors should be updated with the new one and hashed scratch codes should not be updated in the user profile."
+
+        1 * accountManager.updateAccount({
+            it.contains("secondFactors")
+            it.get("secondFactors").getValue().size() == 2
+            it.get("secondFactors").getValue().forEach { k,v -> secondFactors.containsKey(k) && secondFactors[k] == v }
+            it.contains("secondFactorCodes")
+            it.get("secondFactorCodes").size() == 10
+
+            // Scratch codes in user profile are generated with test generator, but the action gets a "real" generator.
+            // In the resulting profile the user should still have the codes from the test generator, that's how we know
+            // the codes where not changed. This trick is used because it's hard to otherwise mock a Managed Object.
+            it.get("secondFactorCodes").forEach { code -> scratchCodes.contains(code.getValue()) }
+        })
+
+        and: "The user should be redirected to the start of the opt-in-mfa action."
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = result.obligation
+        assert obligation instanceof RequiredActionCompletion.PromptUser
+
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
+        1 * sessionManager.remove(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
+    }
+
+    def "should issue new scratch codes when registered a factor with the last available code"()
+    {
+        given: "The user has just registered a second factor using a scratch code."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, "email")
+        sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME) >> Attribute.of(CHOSEN_SECOND_FACTOR_NAME, "My private mail")
+        sessionManager.get(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR) >> Attribute.ofFlag(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
+
+        and: "The user is registered, but has no scratch codes left, and authenticator exists."
+        def user = getUserAttributes(["My iPhone": "sms"])
+            .with(Attribute.of(SECOND_FACTOR_CODES, MapAttributeValue.of([] as List)))
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def descriptorFactory = authenticatorDescriptorFactoryStubReturningDescriptor("email")
+        def authenticatedSessions = authenticatedSessionsStubWithoutSessions()
+        def configuration = new TestActionConfiguration(accountManager, descriptorFactory, sessionManager)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        def scratchCodes = hashedCodes()
+
+        when: "The authentication action is called"
+        action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The list of second factors should be updated with the new one and hashed scratch codes should not be updated in the user profile."
+        1 * accountManager.updateAccount({
+            it.contains("secondFactorCodes")
+            it.get("secondFactorCodes").size() == 10
+            it.get("secondFactorCodes").forEach { code -> scratchCodes.contains(code.getValue()) }
+        })
     }
 
     private def getSessionManagerStubWithoutChosenSecondFactor()
@@ -558,10 +729,15 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         }
 
         if (includeScratchCodes) {
-            user = user.with(Attribute.of("secondFactorCodes", ListAttributeValue.of(scratchCodeGenerator.generateScratchCodes())))
+            user = user.with(Attribute.of("secondFactorCodes", ListAttributeValue.of(hashedCodes())))
         }
 
         user
+    }
+
+    private List<String> hashedCodes()
+    {
+        scratchCodeGenerator.generateScratchCodes().stream().map { DigestUtils.sha256Hex(it) }.collect(Collectors.toList())
     }
 
     private def getAccountManagerStubReturningUser(user)

@@ -18,21 +18,29 @@ package io.curity.identityserver.plugin.OptInMFA.model;
 import se.curity.identityserver.sdk.Nullable;
 import se.curity.identityserver.sdk.web.Request;
 
-public class ChooseAnotherFactorRequestModel
+public class EmergencyFactorRegistrationRequestModel
 {
     private final String _secondFactor;
+    private final String _scratchCode;
     @Nullable
     private final String _secondFactorName;
 
-    public ChooseAnotherFactorRequestModel(Request request)
+
+    public EmergencyFactorRegistrationRequestModel(Request request)
     {
         _secondFactor = request.getFormParameterValueOrError("secondFactor");
+        _scratchCode = request.getFormParameterValueOrError("scratchCode");
         _secondFactorName = request.getFormParameterValueOrError("secondFactorName");
     }
 
     public String getSecondFactor()
     {
         return _secondFactor;
+    }
+
+    public String getScratchCode()
+    {
+        return _scratchCode;
     }
 
     public String getSecondFactorName()

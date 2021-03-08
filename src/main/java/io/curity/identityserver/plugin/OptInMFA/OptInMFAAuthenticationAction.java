@@ -65,9 +65,12 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     public static final String REGISTRATION_OF_ANOTHER_SECOND_FACTOR = ATTRIBUTE_PREFIX + "registration-of-another-second-factor";
     public static final String ANOTHER_SECOND_FACTOR_ATTRIBUTE = ATTRIBUTE_PREFIX + "another-second-factor";
     public static final String ANOTHER_SECOND_FACTOR_NAME = ATTRIBUTE_PREFIX + "another-second-factor-name";
+    public static final String EMERGENCY_REGISTRATION_OF_SECOND_FACTOR = ATTRIBUTE_PREFIX + "emergency-registration-of-second-factor";
+    public static final String SCRATCH_CODE = ATTRIBUTE_PREFIX + "scratch-code";
 
     private static final Logger _logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     public static final String SECOND_FACTORS = "secondFactors";
+    public static final String SECOND_FACTOR_CODES = "secondFactorCodes";
 
     private final AccountManager _accountManager;
     private final AuthenticatorDescriptorFactory _authenticatorDescriptorFactory;
@@ -116,8 +119,8 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
         switch (processState) {
             case SECOND_FACTOR_CHOSEN: return handleActionWhenSecondFactorChosen(authenticatedSessions, authenticationAttributes);
-            case FIRST_SECOND_FACTOR_CHOSEN: return handleFirstChoiceOfSecondFactor();
-            case FIRST_SECOND_FACTOR_REGISTERED: return handleContinueFirstRegistrationOfSecondFactor(authenticationAttributes);
+            case FIRST_SECOND_FACTOR_CHOSEN: return handleFirstChoiceOfSecondFactor(authenticationAttributes);
+            case FIRST_SECOND_FACTOR_REGISTERED: return handleContinueFirstRegistrationOfSecondFactor(authenticationAttributes, authenticatedSessions);
             case SCRATCH_CODES_CONFIRMED: return handleScratchCodesConfirmed(authenticationAttributes, authenticatedSessions);
             case ANOTHER_NEW_SECOND_FACTOR_CHOSEN: return handleRegisterAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
             case ANOTHER_NEW_SECOND_FACTOR_REGISTERED: return handleContinueRegistrationOfAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
@@ -167,12 +170,11 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     private AuthenticationActionResult handleRegisterAnotherSecondFactor(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
         _sessionManager.put(Attribute.ofFlag(REGISTRATION_OF_ANOTHER_SECOND_FACTOR));
-        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
 
         return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
     }
 
-    private AuthenticationActionResult handleContinueFirstRegistrationOfSecondFactor(AuthenticationAttributes authenticationAttributes)
+    private AuthenticationActionResult handleContinueFirstRegistrationOfSecondFactor(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
         // TODO - how can we be sure that the registration was indeed successful?
         String chosenSecondFactor = _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
@@ -183,38 +185,83 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
             chosenSecondFactorName = chosenSecondFactorNameAttribute.getValueOfType(String.class);
         }
 
-        List<String> scratchCodes = _scratchCodeGenerator.generateScratchCodes();
-
         AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
-        AccountAttributes modifiedUser = AccountAttributes.of(user)
-                .with(Attribute.of(SECOND_FACTORS, MapAttributeValue.of(Collections.singletonMap(chosenSecondFactorName, chosenSecondFactor))))
-                .with(Attribute.of("secondFactorCodes", ListAttributeValue.of(scratchCodes.stream().map(DigestUtils::sha256Hex).collect(Collectors.toList()))));
+        AccountAttributes modifiedUser = AccountAttributes.of(user);
+
+        if (isEmergencyRegistration())
+        {
+            Map<String, String> userFactors = user.get(SECOND_FACTORS).getValueOfType(Map.class);
+            userFactors.put(chosenSecondFactorName, chosenSecondFactor);
+
+            modifiedUser = modifiedUser.with(Attribute.of(SECOND_FACTORS, MapAttributeValue.of(userFactors)));
+        } else {
+            modifiedUser = modifiedUser.with(Attribute.of(SECOND_FACTORS, MapAttributeValue.of(Collections.singletonMap(chosenSecondFactorName, chosenSecondFactor))));
+        }
+
+        boolean needToShowScratchCodes = false;
+
+        Attribute userCodesAttribute = user.get(SECOND_FACTOR_CODES);
+
+        if (!isEmergencyRegistration() || userCodesAttribute == null || userCodesAttribute.getValueOfType(List.class).isEmpty()) {
+            List<String> scratchCodes = _scratchCodeGenerator.generateScratchCodes();
+
+            modifiedUser = modifiedUser
+                    .with(Attribute.of(SECOND_FACTOR_CODES, ListAttributeValue.of(scratchCodes.stream().map(DigestUtils::sha256Hex).collect(Collectors.toList()))));
+
+            _sessionManager.put(Attribute.of(SCRATCH_CODES, ListAttributeValue.of(scratchCodes)));
+            needToShowScratchCodes = true;
+        }
 
         _accountManager.updateAccount(modifiedUser);
 
-        _sessionManager.put(Attribute.of(SCRATCH_CODES, ListAttributeValue.of(scratchCodes)));
-        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, CONFIRM_SCRATCH_CODES));
+        if (needToShowScratchCodes) {
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, CONFIRM_SCRATCH_CODES));
 
-        return AuthenticationActionResult.pendingResult(prompt());
+            return AuthenticationActionResult.pendingResult(prompt());
+        } else {
+            _sessionManager.remove(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR);
+
+            return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
+        }
     }
 
     private AuthenticationActionResult handleScratchCodesConfirmed(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
-        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
         return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
     }
 
-    private AuthenticationActionResult handleFirstChoiceOfSecondFactor()
+    private AuthenticationActionResult handleFirstChoiceOfSecondFactor(AuthenticationAttributes authenticationAttributes)
     {
+        if (isEmergencyRegistration())
+        {
+            String scratchCode = _sessionManager.remove(SCRATCH_CODE).getValueOfType(String.class);
+            String hashedCode = DigestUtils.sha256Hex(scratchCode);
+            AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
+
+            List<String> userCodes = user.get(SECOND_FACTOR_CODES).getValueOfType(List.class);
+
+            if (!userCodes.contains(hashedCode)) {
+                throw _exceptionFactory.badRequestException(ErrorCode.INVALID_INPUT);
+            } else {
+                AccountAttributes modifiedUser = AccountAttributes.of(user)
+                    .with(Attribute.of(
+                        SECOND_FACTOR_CODES,
+                        ListAttributeValue.of(user.get(SECOND_FACTOR_CODES).stream().filter(code -> !code.getValue().equals(hashedCode)).collect(Collectors.toList()))
+                    ));
+
+                _accountManager.updateAccount(modifiedUser);
+            }
+        }
+
         String secondFactorAcr = _sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
 
         try
         {
             NonEmptyList<AuthenticatorDescriptor> authenticators = _authenticatorDescriptorFactory.getAuthenticatorDescriptors(secondFactorAcr);
             _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED));
-            //TODO - the path should not be required, it's a bug.
-            //TODO - what if the chosen authenticator requires a path?
-            return AuthenticationActionResult.pendingResult(register(authenticators.getFirst(), true, ""));
+
+            //TODO - what if the chosen authenticator requires a path for registration?
+            return AuthenticationActionResult.pendingResult(register(authenticators.getFirst(), true));
         }
         catch (AuthenticatorNotConfiguredException e)
         {
@@ -300,6 +347,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
             }
 
             _sessionManager.put(Attribute.of(AVAILABLE_SECOND_FACTORS_ATTRIBUTE, MapAttributeValue.of(secondFactors)));
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
         }
 
         return AuthenticationActionResult.pendingResult(prompt());
@@ -315,6 +363,11 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         return transactionAttribute == null && currentState != NO_SECOND_FACTOR_CHOSEN;
     }
 
+    private boolean isEmergencyRegistration()
+    {
+        return _sessionManager.get(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR) != null;
+    }
+
     private void removeAllPluginDataFromSession()
     {
         _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME);
@@ -323,5 +376,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         _sessionManager.remove(ANOTHER_SECOND_FACTOR_ATTRIBUTE);
         _sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME);
         _sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR);
+        _sessionManager.remove(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR);
+        _sessionManager.remove(SCRATCH_CODE);
     }
 }
