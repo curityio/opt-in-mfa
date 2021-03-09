@@ -29,15 +29,30 @@
             <input type="text" name="secondFactorName" id="secondFactorName" />
             <label for="secondFactorName">Name for the second factor</label>
         </div>
-        #foreach($_authenticatorMapItem in $availableAuthenticators)
+        #foreach($_authenticatorItem in $availableAuthenticators)
             <div class="form-field mb1">
-                <button type="submit" id="$_authenticatorMapItem.acr" onclick="setSecondFactor(event)" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
-                    <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
-                    $_authenticatorMapItem.description
+                <button type="submit" id="$_authenticatorItem.acr" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorItem.type">
+                    <i class="icon #iconClassName($_authenticatorItem.type)"></i>
+                    $_authenticatorItem.description
                 </button>
             </div>
         #end
         <input type="hidden" id="secondFactor" name="secondFactor" value="" />
+    </form>
+
+    <p>Here is a list of your current second factors. Click on a factor to delete it.</p>
+    <form class="center" action="$_actionUrl/register" method="POST" id="secondFactorForm">
+
+        #foreach($_authenticatorItem in $currentAuthenticators)
+            <div class="form-field mb1">
+                <button type="submit" id="$_authenticatorItem.acr" class="button-delete-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorItem.type">
+                    <i class="icon #iconClassName($_authenticatorItem.type)"></i>
+                    <span>$_authenticatorItem.description</span>
+                </button>
+            </div>
+        #end
+        <input type="hidden" id="deleteSecondFactor" name="secondFactorName" value="" />
+        <input type="hidden" name="deleteFactor" value="true" />
     </form>
 
     #parse("fragments/jquery")
@@ -46,6 +61,10 @@
         jQuery(document).ready(function ($) {
             $(".button-secondary-factor").on("click", function(e) {
                 $("#secondFactor").val(this.id);
+            });
+
+            $(".button-delete-secondary-factor").on("click", function(e) {
+                $("#deleteSecondFactor").val($(this).find("span").text());
             });
         });
     </script>

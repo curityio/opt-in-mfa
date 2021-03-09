@@ -54,7 +54,7 @@
             #end
             #foreach($_authenticatorMapItem in $authenticators)
                 <div class="form-field mb1">
-                    <button type="submit" id="$_authenticatorMapItem.acr" onclick="setSecondFactor(event)" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
+                    <button type="submit" id="$_authenticatorMapItem.acr" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
                         <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
                         $_authenticatorMapItem.description
                     </button>
@@ -65,7 +65,7 @@
 
             #if($isFirstChoiceOfSecondFactor != true)
                 <div class="form-field mb1">
-                    <a href="$_actionUrl/register">Add another second factor</a>
+                    <a href="$_actionUrl/register">Add / remove a second factor</a>
                 </div>
                 <div class="form-field">
                     <a href="$_actionUrl/emergencyRegister">Register another factor with a recovery code</a>

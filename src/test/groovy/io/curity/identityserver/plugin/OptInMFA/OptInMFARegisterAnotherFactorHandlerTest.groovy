@@ -18,9 +18,11 @@ package io.curity.identityserver.plugin.OptInMFA
 import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFARegisterAnotherFactorHandler
 import io.curity.identityserver.plugin.OptInMFA.model.ChooseAnotherFactorRequestModel
 import se.curity.identityserver.sdk.NonEmptyList
+import se.curity.identityserver.sdk.attribute.AccountAttributes
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionResult
 import se.curity.identityserver.sdk.errors.AuthenticatorNotConfiguredException
+import se.curity.identityserver.sdk.service.AccountManager
 import se.curity.identityserver.sdk.service.SessionManager
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptor
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory
@@ -32,23 +34,30 @@ import spock.lang.Specification
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_NAME
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SUBJECT
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_CHOSEN
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN_TO_DELETE
 
 class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
 
     @Shared def sessionManager = Stub(SessionManager)
-    def configuration = new TestActionConfiguration()
 
     def setupSpec() {
         sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
+        sessionManager.get(SUBJECT) >> Attribute.of(SUBJECT, "username")
     }
 
     def "should prepare list of authenticators and display view"()
     {
-        given: "All the necessary object are prepared."
+        given: "The user has some registered second factors."
+        def user = getUserWithSecondFactors()
+        def accountManager = Stub(AccountManager)
+        accountManager.getByUserName("username") >> user
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, null)
+
         def factory = Mock(AuthenticatorDescriptorFactory)
-        def handler = new OptInMFARegisterAnotherFactorHandler(factory, sessionManager, configuration, null)
+        def handler = new OptInMFARegisterAnotherFactorHandler(factory, configuration, null)
 
         def request = Stub(Request)
         def model = new ChooseAnotherFactorRequestModel(request)
@@ -63,14 +72,23 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("acr1") >> authenticatorList
         1 * factory.getAuthenticatorDescriptors("acr2") >> authenticatorList
-        1 * response.putViewData("availableAuthenticators", _ as List, _)
+        1 * factory.getAuthenticatorDescriptors("email1") >> authenticatorList
+        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        1 * response.putViewData("availableAuthenticators", { it.size() == 2 }, _)
+        1 * response.putViewData("currentAuthenticators", { it.size() == 3 }, _)
     }
 
     def "should remove authenticator from rendered list if authenticator no longer present in system"()
     {
-        given: "All the necessary object are prepared."
+        given: "The user has some registered second factors."
+        def user = getUserWithSecondFactors()
+        def accountManager = Stub(AccountManager)
+        accountManager.getByUserName("username") >> user
+
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, null)
+
         def factory = Mock(AuthenticatorDescriptorFactory)
-        def handler = new OptInMFARegisterAnotherFactorHandler(factory, sessionManager, configuration, null)
+        def handler = new OptInMFARegisterAnotherFactorHandler(factory, configuration, null)
 
         def response = Mock(Response)
         def request = Stub(Request)
@@ -86,7 +104,10 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("acr1") >> authenticatorList
         1 * factory.getAuthenticatorDescriptors("acr2") >> { throw new AuthenticatorNotConfiguredException("") }
+        1 * factory.getAuthenticatorDescriptors("email1") >> { throw new AuthenticatorNotConfiguredException("") }
+        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
         1 * response.putViewData("availableAuthenticators", { it.size() == 1 }, _)
+        1 * response.putViewData("currentAuthenticators", { it.size() == 2 }, _)
     }
 
     def "should set user's choice in session and continue with the flow"()
@@ -101,8 +122,9 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
         request.getFormParameterValueOrError("secondFactorName") >> "My private email"
         def requestModel = new ChooseAnotherFactorRequestModel(request)
 
+        def configuration = new TestActionConfiguration(null, sessionManager, null)
         def factory = Mock(AuthenticatorDescriptorFactory)
-        def handler = new OptInMFARegisterAnotherFactorHandler(factory, sessionManager, configuration, null)
+        def handler = new OptInMFARegisterAnotherFactorHandler(factory, configuration, null)
 
         when: "The post endpoint is called."
         def result = handler.post(requestModel, response)
@@ -117,5 +139,40 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
         and: "The user is redirected to the action again."
         assert result.isPresent()
         assert result.get() instanceof ActionCompletionResult.CompletedActionCompletionResult
+    }
+
+    def "should set user's choice in session and continue with the flow when deleting second factor"()
+    {
+        given: "The user has chosen a factor to delete."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
+
+        def response = Stub(Response)
+        def request = Stub(Request)
+        request.getFormParameterValueOrError("secondFactorName") >> "My private email"
+        request.getFormParameterValueOrError("deleteFactor") >> "true"
+        def requestModel = new ChooseAnotherFactorRequestModel(request)
+
+        def configuration = new TestActionConfiguration(null, sessionManager, null)
+        def factory = Mock(AuthenticatorDescriptorFactory)
+        def handler = new OptInMFARegisterAnotherFactorHandler(factory, configuration, null)
+
+        when: "The post endpoint is called."
+        def result = handler.post(requestModel, response)
+
+        then: "Information about the chosen factor are set in session."
+        1 * sessionManager.put({ it.getValue().toString() == "My private email"; it.getName().getValue() == ANOTHER_SECOND_FACTOR_NAME })
+
+        and: "The process is moved to the next step."
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN_TO_DELETE))
+
+        and: "The user is redirected to the action again."
+        assert result.isPresent()
+        assert result.get() instanceof ActionCompletionResult.CompletedActionCompletionResult
+    }
+
+    private static def getUserWithSecondFactors()
+    {
+        AccountAttributes.fromMap(["id": "1234", "subject": "username", "secondFactors": ["My email": "email1", "My phone": "sms1", "My other phone": "sms1"]])
     }
 }

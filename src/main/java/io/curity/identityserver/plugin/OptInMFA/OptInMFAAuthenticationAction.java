@@ -67,6 +67,9 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     public static final String ANOTHER_SECOND_FACTOR_NAME = ATTRIBUTE_PREFIX + "another-second-factor-name";
     public static final String EMERGENCY_REGISTRATION_OF_SECOND_FACTOR = ATTRIBUTE_PREFIX + "emergency-registration-of-second-factor";
     public static final String SCRATCH_CODE = ATTRIBUTE_PREFIX + "scratch-code";
+    public static final String SUBJECT = ATTRIBUTE_PREFIX + "subject";
+    public static final String DELETION_OF_SECOND_FACTOR = ATTRIBUTE_PREFIX + "deleteion-of-second-factor";
+    public static final String FORCE_SHOW_LIST_OF_SECOND_FACTORS = ATTRIBUTE_PREFIX + "force-show-list-of-second-factors";
 
     private static final Logger _logger = LoggerFactory.getLogger(MethodHandles.lookup().lookupClass());
     public static final String SECOND_FACTORS = "secondFactors";
@@ -104,6 +107,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         if (optInMFAState == null) {
             _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
             _sessionManager.put(Attribute.of(AUTHENTICATION_TRANSACTION, authenticationTransactionId));
+            _sessionManager.put(Attribute.of(SUBJECT, authenticationAttributes.getSubject()));
         } else {
             processState = OptInMFAState.valueOf(optInMFAState.getValueOfType(String.class));
             transactionAttribute = _sessionManager.get(AUTHENTICATION_TRANSACTION);
@@ -114,6 +118,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
             removeAllPluginDataFromSession();
             _sessionManager.put(Attribute.of(AUTHENTICATION_TRANSACTION, authenticationTransactionId));
             _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN));
+            _sessionManager.put(Attribute.of(SUBJECT, authenticationAttributes.getSubject()));
             processState = NO_SECOND_FACTOR_CHOSEN;
         }
 
@@ -124,6 +129,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
             case SCRATCH_CODES_CONFIRMED: return handleScratchCodesConfirmed(authenticationAttributes, authenticatedSessions);
             case ANOTHER_NEW_SECOND_FACTOR_CHOSEN: return handleRegisterAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
             case ANOTHER_NEW_SECOND_FACTOR_REGISTERED: return handleContinueRegistrationOfAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
+            case SECOND_FACTOR_CHOSEN_TO_DELETE: return handleCheckSecondFactorToDelete(authenticationAttributes, authenticatedSessions);
             default: return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
         }
     }
@@ -282,6 +288,13 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
                 return handleRegistrationOfAnotherSecondFactor(authenticatedSessions);
             }
 
+            Attribute deletionOfSecondFactor = _sessionManager.remove(DELETION_OF_SECOND_FACTOR);
+
+            if (deletionOfSecondFactor != null)
+            {
+                return handleDeletionOfSecondFactor(authenticationAttributes, authenticatedSessions);
+            }
+
             return AuthenticationActionResult.successfulResult(authenticationAttributes);
         }
 
@@ -335,12 +348,21 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         }
         else
         {
-            if (secondFactors.values().stream().anyMatch(authenticatedSessions::contains))
+            @Nullable Attribute forceShowListOfSecondFactors = _sessionManager.remove(FORCE_SHOW_LIST_OF_SECOND_FACTORS);
+
+            if (forceShowListOfSecondFactors == null && secondFactors.values().stream().anyMatch(authenticatedSessions::contains))
             {
                 Attribute registrationOfAnotherSecondFactor = _sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR);
 
                 if (registrationOfAnotherSecondFactor != null) {
                     return handleRegistrationOfAnotherSecondFactor(authenticatedSessions);
+                }
+
+                Attribute deletionOfSecondFactor = _sessionManager.remove(DELETION_OF_SECOND_FACTOR);
+
+                if (deletionOfSecondFactor != null)
+                {
+                    return handleDeletionOfSecondFactor(authenticationAttributes, authenticatedSessions);
                 }
 
                 return AuthenticationActionResult.successfulResult(authenticationAttributes);
@@ -351,6 +373,55 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         }
 
         return AuthenticationActionResult.pendingResult(prompt());
+    }
+
+    private AuthenticationActionResult handleCheckSecondFactorToDelete(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
+    {
+        AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
+
+        Attribute usersSecondFactorsAttribute = user.get(SECOND_FACTORS);
+        String factorToDelete = _sessionManager.get(ANOTHER_SECOND_FACTOR_NAME).getValueOfType(String.class);
+
+        if (usersSecondFactorsAttribute == null)
+        {
+            _logger.info("Subject {} trying to delete second factor {} but has no factors configured.", authenticationAttributes.getSubject(), factorToDelete);
+            removeAllPluginDataFromSession();
+            throw _exceptionFactory.badRequestException(ErrorCode.INVALID_INPUT);
+        }
+
+        Map<String, String> usersSecondFactors = usersSecondFactorsAttribute.getValueOfType(Map.class);
+
+
+        if (usersSecondFactors.isEmpty() || !usersSecondFactors.containsKey(factorToDelete)) {
+            _logger.info("Subject {} trying to delete second factor {}, but it's not in their attributes.", authenticationAttributes.getSubject(), factorToDelete);
+            removeAllPluginDataFromSession();
+            throw _exceptionFactory.badRequestException(ErrorCode.INVALID_INPUT);
+        }
+
+        _sessionManager.put(Attribute.ofFlag(DELETION_OF_SECOND_FACTOR));
+
+        return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
+    }
+
+    private AuthenticationActionResult handleDeletionOfSecondFactor(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
+    {
+        AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
+
+        String factorToRemove = _sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME).getValueOfType(String.class);
+
+        Map<String, String> userSecondFactors = user.get(SECOND_FACTORS).getValueOfType(Map.class);
+        userSecondFactors.remove(factorToRemove);
+
+        AccountAttributes modifiedUser = AccountAttributes.of(user)
+                .removeAttribute(SECOND_FACTORS)
+                .with(Attribute.of(SECOND_FACTORS, MapAttributeValue.of(
+                        userSecondFactors
+                )));
+        _accountManager.updateAccount(modifiedUser);
+
+        _sessionManager.put(Attribute.ofFlag(FORCE_SHOW_LIST_OF_SECOND_FACTORS));
+
+        return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
     }
 
     private boolean isInvalidState(@Nullable Attribute transactionAttribute, String transactionId, OptInMFAState currentState)
@@ -370,6 +441,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
     private void removeAllPluginDataFromSession()
     {
+        _sessionManager.remove(AUTHENTICATION_TRANSACTION);
         _sessionManager.remove(CHOSEN_SECOND_FACTOR_NAME);
         _sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE);
         _sessionManager.remove(SCRATCH_CODES);
@@ -378,5 +450,8 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         _sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR);
         _sessionManager.remove(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR);
         _sessionManager.remove(SCRATCH_CODE);
+        _sessionManager.remove(DELETION_OF_SECOND_FACTOR);
+        _sessionManager.remove(FORCE_SHOW_LIST_OF_SECOND_FACTORS);
+        _sessionManager.remove(SUBJECT);
     }
 }

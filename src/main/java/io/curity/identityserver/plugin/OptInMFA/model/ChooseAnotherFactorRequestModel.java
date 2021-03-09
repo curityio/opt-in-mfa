@@ -23,11 +23,15 @@ public class ChooseAnotherFactorRequestModel
     private final String _secondFactor;
     @Nullable
     private final String _secondFactorName;
+    @Nullable
+    private final boolean _deleteSecondFactor;
 
     public ChooseAnotherFactorRequestModel(Request request)
     {
         _secondFactor = request.getFormParameterValueOrError("secondFactor");
         _secondFactorName = request.getFormParameterValueOrError("secondFactorName");
+        @Nullable String deleteSecondFactorParameter = request.getFormParameterValueOrError("deleteFactor");
+        _deleteSecondFactor = deleteSecondFactorParameter != null && deleteSecondFactorParameter.equals("true");
     }
 
     public String getSecondFactor()
@@ -38,5 +42,10 @@ public class ChooseAnotherFactorRequestModel
     public String getSecondFactorName()
     {
         return _secondFactorName;
+    }
+
+    public boolean isDeleteSecondFactor()
+    {
+        return _deleteSecondFactor;
     }
 }

@@ -24,6 +24,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.curity.identityserver.sdk.NonEmptyList;
 import se.curity.identityserver.sdk.Nullable;
+import se.curity.identityserver.sdk.attribute.AccountAttributes;
 import se.curity.identityserver.sdk.attribute.Attribute;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionResult;
@@ -40,15 +41,18 @@ import se.curity.identityserver.sdk.web.ResponseModel;
 
 import java.util.ArrayList;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_ATTRIBUTE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.ANOTHER_SECOND_FACTOR_NAME;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SECOND_FACTORS;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SUBJECT;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_CHOSEN;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN_TO_DELETE;
 import static io.curity.identityserver.plugin.OptInMFA.model.AuthenticatorModel.of;
 
 public final class OptInMFARegisterAnotherFactorHandler implements ActionCompletionRequestHandler<ChooseAnotherFactorRequestModel>
@@ -61,10 +65,10 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
 
     public static final Logger _logger = LoggerFactory.getLogger(OptInMFARegisterAnotherFactorHandler.class);
 
-    public OptInMFARegisterAnotherFactorHandler(AuthenticatorDescriptorFactory descriptorFactory, SessionManager sessionManager, OptInMFAAuthenticationActionConfig configuration, ExceptionFactory exceptionFactory)
+    public OptInMFARegisterAnotherFactorHandler(AuthenticatorDescriptorFactory descriptorFactory, OptInMFAAuthenticationActionConfig configuration, ExceptionFactory exceptionFactory)
     {
         _descriptorFactory = descriptorFactory;
-        _sessionManager = sessionManager;
+        _sessionManager = configuration.getSessionManager();
         _exceptionFactory = exceptionFactory;
         _accountManager = configuration.getAccountManager();
         _availableSecondFactors = configuration.getAvailableAuthenticators();
@@ -89,15 +93,47 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
 
         response.putViewData("availableAuthenticators", availableSecondFactors, Response.ResponseModelScope.NOT_FAILURE);
 
+        Attribute subjectAttribute = _sessionManager.get(SUBJECT);
+        if (subjectAttribute == null) {
+            _logger.info("No information in session about the pre-authenticated user.");
+            throw _exceptionFactory.badRequestException(ErrorCode.INVALID_SERVER_STATE);
+        }
+
+        String subject = subjectAttribute.getValueOfType(String.class);
+
+        AccountAttributes user = _accountManager.getByUserName(subject);
+
+        Map<String, String> currentSecondFactorAcrs = user.get(SECOND_FACTORS).getValueOfType(Map.class);
+        List<AuthenticatorModel> currentSecondFactors = new ArrayList<>(currentSecondFactorAcrs.size());
+
+        currentSecondFactorAcrs.forEach((name, acr) -> {
+            try
+            {
+                NonEmptyList<AuthenticatorDescriptor> descriptor = _descriptorFactory.getAuthenticatorDescriptors(acr);
+                currentSecondFactors.add(of(descriptor.getFirst(), name));
+            }
+            catch (AuthenticatorNotConfiguredException e)
+            {
+                _logger.info("Authenticator listed for subject {} second factors but not available in the system: {}", subject, acr);
+            }
+        });
+
+        response.putViewData("currentAuthenticators", currentSecondFactors, Response.ResponseModelScope.NOT_FAILURE);
+
         return Optional.empty();
     }
 
     @Override
     public Optional<ActionCompletionResult> post(ChooseAnotherFactorRequestModel request, Response response)
     {
-        _sessionManager.put(Attribute.of(ANOTHER_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
         _sessionManager.put(Attribute.of(ANOTHER_SECOND_FACTOR_NAME, request.getSecondFactorName()));
-        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_CHOSEN));
+
+        if (request.isDeleteSecondFactor()) {
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN_TO_DELETE));
+        } else {
+            _sessionManager.put(Attribute.of(ANOTHER_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_CHOSEN));
+        }
 
         return Optional.of(ActionCompletionResult.complete());
     }
@@ -122,9 +158,16 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
         ChooseAnotherFactorRequestModel requestModel = new ChooseAnotherFactorRequestModel(request);
 
         if (request.isPostRequest()) {
-            if (requestModel.getSecondFactor() == null)
-            {
-                throw new MissingSecondFactorParameterException();
+            if (requestModel.isDeleteSecondFactor()) {
+                if (requestModel.getSecondFactorName() == null)
+                {
+                    throw new MissingSecondFactorParameterException();
+                }
+            } else {
+                if (requestModel.getSecondFactor() == null)
+                {
+                    throw new MissingSecondFactorParameterException();
+                }
             }
         }
 

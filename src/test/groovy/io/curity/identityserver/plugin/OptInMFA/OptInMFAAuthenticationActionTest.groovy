@@ -43,7 +43,9 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAct
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AUTHENTICATION_TRANSACTION
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.DELETION_OF_SECOND_FACTOR
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.EMERGENCY_REGISTRATION_OF_SECOND_FACTOR
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.FORCE_SHOW_LIST_OF_SECOND_FACTORS
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REGISTRATION_OF_ANOTHER_SECOND_FACTOR
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODE
@@ -57,6 +59,7 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_F
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SCRATCH_CODES_CONFIRMED
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODES
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN_TO_DELETE
 
 final class OptInMFAAuthenticationActionTest extends Specification {
 
@@ -323,6 +326,8 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         1 * sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR)
         1 * sessionManager.remove(EMERGENCY_REGISTRATION_OF_SECOND_FACTOR)
         1 * sessionManager.remove(SCRATCH_CODE)
+        1 * sessionManager.remove(DELETION_OF_SECOND_FACTOR)
+        1 * sessionManager.remove(FORCE_SHOW_LIST_OF_SECOND_FACTORS)
 
         and: "The new transaction ID is saved in session and step reset."
         1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
@@ -656,6 +661,151 @@ final class OptInMFAAuthenticationActionTest extends Specification {
             it.get("secondFactorCodes").size() == 10
             it.get("secondFactorCodes").forEach { code -> scratchCodes.contains(code.getValue()) }
         })
+    }
+
+    def "should throw Bad Request exception if user trying to delete not their second factor"()
+    {
+        given: "The user has chosen a second factor to delete."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN_TO_DELETE)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.get(ANOTHER_SECOND_FACTOR_NAME) >> Attribute.of(ANOTHER_SECOND_FACTOR_NAME, "My private email")
+
+        and: "The user does not have the chosen second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def exceptionFactory = Mock(ExceptionFactory)
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, exceptionFactory)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        def sessions = authenticatedSessionsStubWithoutSessions()
+
+        when: "When the action is applied."
+        action.apply(authenticationAttributes, sessions, "transactionId", null)
+
+        then: "A bad request exception is thrown."
+        thrown RuntimeException
+        1 * exceptionFactory.badRequestException(ErrorCode.INVALID_INPUT)
+
+        and: "The session is cleared"
+        1 * sessionManager.remove(AUTHENTICATION_TRANSACTION)
+        1 * sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME)
+    }
+
+    def "should require authentication with second factor when trying to delete second factor"()
+    {
+        given: "The user has chosen a second factor to delete."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN_TO_DELETE)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.get(ANOTHER_SECOND_FACTOR_NAME) >> Attribute.of(ANOTHER_SECOND_FACTOR_NAME, "My iPhone 11")
+
+        and: "The user has the chosen second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def exceptionFactory = Mock(ExceptionFactory)
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, exceptionFactory)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        and: "The user is not authenticated with any other second factor."
+        def sessions = authenticatedSessionsStubWithoutSessions()
+
+        when: "When the action is applied."
+        def response = action.apply(authenticationAttributes, sessions, "transactionId", null)
+
+        then: "The user is redirected to start of process (authenticate with a second factor)."
+        assert response instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = response.obligation
+        assert obligation instanceof RequiredActionCompletion.PromptUser
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
+
+        and: "A flag is set in session informing that the user wants to delete a second factor."
+        1 * sessionManager.put(Attribute.ofFlag(DELETION_OF_SECOND_FACTOR))
+    }
+
+    def "should delete second factor and redirect to start of process"()
+    {
+        given: "The user has chosen a second factor to delete."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME) >> Attribute.of(ANOTHER_SECOND_FACTOR_NAME, "My iPhone 11")
+        sessionManager.remove(CHOSEN_SECOND_FACTOR_ATTRIBUTE) >> Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, "email1")
+        sessionManager.remove(DELETION_OF_SECOND_FACTOR) >> Attribute.ofFlag(DELETION_OF_SECOND_FACTOR)
+
+        and: "The user has the chosen second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms", "My private email": "email1"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def exceptionFactory = Mock(ExceptionFactory)
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, exceptionFactory)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        and: "The user is authenticated with an existing second factor"
+        def authenticatedSessions = authenticatedSessionsStubWithSession("email1")
+
+        def resultingSecondFactors = ["My private email": "email1"] as Map
+
+        when: "The authentication action is called"
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The second factor should be removed from the user's profile."
+        1 * accountManager.updateAccount({
+            it.contains("secondFactors")
+            it.get("secondFactors").getValue().size() == 1
+            it.get("secondFactors").getValue().forEach { k,v -> resultingSecondFactors.containsKey(k) && resultingSecondFactors[k] == v }
+        })
+
+        and: "The user should be redirected to start of process."
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = result.obligation
+        assert obligation instanceof RequiredActionCompletion.PromptUser
+        1 * sessionManager.put(Attribute.ofFlag(FORCE_SHOW_LIST_OF_SECOND_FACTORS))
+        1 * sessionManager.remove(FORCE_SHOW_LIST_OF_SECOND_FACTORS) >> Attribute.ofFlag(FORCE_SHOW_LIST_OF_SECOND_FACTORS)
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
+    }
+
+    def "should delete second factor and redirect to start of process if already authenticated with second factor"()
+    {
+        given: "The user has chosen a second factor to delete."
+        def sessionManager = Mock(SessionManager)
+        sessionManager.remove(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
+        sessionManager.get(AUTHENTICATION_TRANSACTION) >> Attribute.of(AUTHENTICATION_TRANSACTION, "transactionId")
+        sessionManager.remove(ANOTHER_SECOND_FACTOR_NAME) >> Attribute.of(ANOTHER_SECOND_FACTOR_NAME, "My iPhone 11")
+        sessionManager.remove(DELETION_OF_SECOND_FACTOR) >> Attribute.ofFlag(DELETION_OF_SECOND_FACTOR)
+
+        and: "The user has the chosen second factor."
+        def user = getUserAttributes(["My iPhone 11": "sms", "My private email": "email1"])
+        def accountManager = getAccountManagerStubReturningUser(user)
+        def exceptionFactory = Mock(ExceptionFactory)
+        def configuration = new TestActionConfiguration(accountManager, sessionManager, exceptionFactory)
+
+        def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
+
+        and: "The user is authenticated with an existing second factor"
+        def authenticatedSessions = authenticatedSessionsStubWithSession("email1")
+
+        def resultingSecondFactors = ["My private email": "email1"] as Map
+
+        when: "The authentication action is called"
+        def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
+
+        then: "The second factor should be removed from the user's profile."
+        1 * accountManager.updateAccount({
+            it.contains("secondFactors")
+            it.get("secondFactors").getValue().size() == 1
+            it.get("secondFactors").getValue().forEach { k,v -> resultingSecondFactors.containsKey(k) && resultingSecondFactors[k] == v }
+        })
+
+        and: "The user should be redirected to start of process."
+        assert result instanceof AuthenticationActionResult.PendingCompletionAuthenticationActionResult
+        def obligation = result.obligation
+        assert obligation instanceof RequiredActionCompletion.PromptUser
+        1 * sessionManager.put(Attribute.ofFlag(FORCE_SHOW_LIST_OF_SECOND_FACTORS))
+        2 * sessionManager.remove(FORCE_SHOW_LIST_OF_SECOND_FACTORS) >>> [null, Attribute.ofFlag(FORCE_SHOW_LIST_OF_SECOND_FACTORS)]
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN))
     }
 
     private def getSessionManagerStubWithoutChosenSecondFactor()
