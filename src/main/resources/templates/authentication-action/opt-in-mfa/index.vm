@@ -44,12 +44,12 @@
         <p>Select the second factor you want to use to verify the login.</p>
         #end
 
-        <form class="center" action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
+        <form action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
             #if($isFirstChoiceOfSecondFactor == true)
-                <div class="form-field mb1">
-                    <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
+                <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
+                <div class="form-field">
                     <input type="text" name="secondFactorName" id="secondFactorName" />
-                    <label for="secondFactorName">Name for the second factor</label>
+                    <label for="secondFactorName" class="full-width block mb1 field-light">Name for the second factor</label>
                 </div>
             #end
             #foreach($_authenticatorMapItem in $authenticators)

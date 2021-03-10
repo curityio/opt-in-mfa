@@ -20,15 +20,18 @@ import io.curity.identityserver.plugin.OptInMFA.OptInMFAState;
 import io.curity.identityserver.plugin.OptInMFA.exception.MissingSecondFactorParameterException;
 import io.curity.identityserver.plugin.OptInMFA.model.AuthenticatorModel;
 import io.curity.identityserver.plugin.OptInMFA.model.EmergencyFactorRegistrationRequestModel;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import se.curity.identityserver.sdk.NonEmptyList;
 import se.curity.identityserver.sdk.Nullable;
+import se.curity.identityserver.sdk.attribute.AccountAttributes;
 import se.curity.identityserver.sdk.attribute.Attribute;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionResult;
 import se.curity.identityserver.sdk.errors.AuthenticatorNotConfiguredException;
 import se.curity.identityserver.sdk.errors.ErrorCode;
+import se.curity.identityserver.sdk.service.AccountManager;
 import se.curity.identityserver.sdk.service.ExceptionFactory;
 import se.curity.identityserver.sdk.service.SessionManager;
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptor;
@@ -47,6 +50,8 @@ import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAct
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.EMERGENCY_REGISTRATION_OF_SECOND_FACTOR;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SCRATCH_CODE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SECOND_FACTOR_CODES;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.SUBJECT;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_CHOSEN;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN;
 import static io.curity.identityserver.plugin.OptInMFA.model.AuthenticatorModel.of;
@@ -57,15 +62,17 @@ public final class OptInMFAEmergencyRegisterFactorHandler implements ActionCompl
     private final ExceptionFactory _exceptionFactory;
     private final AuthenticatorDescriptorFactory _descriptorFactory;
     private final List<String> _availableSecondFactors;
+    private final AccountManager _accountManager;
 
     public static final Logger _logger = LoggerFactory.getLogger(OptInMFAEmergencyRegisterFactorHandler.class);
 
-    public OptInMFAEmergencyRegisterFactorHandler(AuthenticatorDescriptorFactory descriptorFactory, SessionManager sessionManager, OptInMFAAuthenticationActionConfig configuration, ExceptionFactory exceptionFactory)
+    public OptInMFAEmergencyRegisterFactorHandler(AuthenticatorDescriptorFactory descriptorFactory, OptInMFAAuthenticationActionConfig configuration)
     {
         _descriptorFactory = descriptorFactory;
-        _sessionManager = sessionManager;
-        _exceptionFactory = exceptionFactory;
+        _sessionManager = configuration.getSessionManager();
+        _exceptionFactory = configuration.getExceptionFactory();
         _availableSecondFactors = configuration.getAvailableAuthenticators();
+        _accountManager = configuration.getAccountManager();
     }
 
     @Override
@@ -93,6 +100,25 @@ public final class OptInMFAEmergencyRegisterFactorHandler implements ActionCompl
     @Override
     public Optional<ActionCompletionResult> post(EmergencyFactorRegistrationRequestModel request, Response response)
     {
+        String subject = _sessionManager.get(SUBJECT).getValueOfType(String.class);
+        AccountAttributes user = _accountManager.getByUserName(subject);
+        Attribute userCodesAttribute = user.get(SECOND_FACTOR_CODES);
+
+        if (userCodesAttribute == null) {
+            throw _exceptionFactory.badRequestException(ErrorCode.ACCESS_DENIED);
+        }
+
+        List<String> userCodes = userCodesAttribute.getValueOfType(List.class);
+
+        String hashedCode = DigestUtils.sha256Hex(request.getScratchCode());
+
+        if (!userCodes.contains(hashedCode)) {
+            response.putViewData("wrongCode", true, Response.ResponseModelScope.NOT_FAILURE);
+            response.setResponseModel(ResponseModel.templateResponseModel(Collections.emptyMap(),
+                    "emergencyRegister"), Response.ResponseModelScope.NOT_FAILURE);
+            return get(request, response);
+        }
+
         _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
         _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_NAME, request.getSecondFactorName()));
         _sessionManager.put(Attribute.of(SCRATCH_CODE, request.getScratchCode()));

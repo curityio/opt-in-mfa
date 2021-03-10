@@ -23,16 +23,23 @@
 #define ($_body)
     <p>Select another second factor which you want to use to verify the login.</p>
 
-    <form class="center" action="$_actionUrl/emergencyRegister" method="POST" id="secondFactorForm">
-        <div class="form-field mb1">
-            <p>Enter one of the scratch codes you received when registering your first second factor, which wasn't used before.</p>
-            <input type="text" name="scratchCode" id="scratchCode" />
-            <label for="scratchCode">Scratch code</label>
+    <form action="$_actionUrl/emergencyRegister" method="POST" id="secondFactorForm">
+        #if($wrongCode == true)
+           <div class="alert-wrapper">
+                <div class="alert alert-danger">
+                   <p>Invalid scratch code entered.</p>
+               </div>
+           </div>
+        #end
+        <p>Enter one of the scratch codes you received when registering your first second factor, which wasn't used before.</p>
+        <div class="form-field">
+            <label for="scratchCode" #if($wrongCode == true) class="is-error is-error-danger" #end >Scratch code</label>
+            <input type="text" name="scratchCode" id="scratchCode" class="full-width block mb1 field-light #if($wrongCode == true) is-error is-error-danger #end" />
         </div>
-        <div class="form-field mb1">
-            <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
-            <input type="text" name="secondFactorName" id="secondFactorName" />
+        <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
+        <div class="form-field">
             <label for="secondFactorName">Name for the second factor</label>
+            <input type="text" name="secondFactorName" id="secondFactorName" class="full-width block mb1 field-light" />
         </div>
         #foreach($_authenticatorMapItem in $availableAuthenticators)
             <div class="form-field mb1">

@@ -483,7 +483,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def authenticatedSessions = authenticatedSessionsStubWithSession("sms")
 
         def secondFactors = ["My iPhone 11": "sms", "My private email": "email"] as Map
-        def scratchCodes = hashedCodes()
+        def scratchCodes = scratchCodeGenerator.hashedCodes()
 
         when: "The authentication action is called"
         def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
@@ -601,7 +601,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         def action = new OptInMFAAuthenticationAction(configuration, new ScratchCodeGenerator(configuration))
 
         def secondFactors = ["My iPhone": "sms", "My private mail": "email"] as Map
-        def scratchCodes = hashedCodes()
+        def scratchCodes = scratchCodeGenerator.hashedCodes()
 
         when: "The authentication action is called"
         def result = action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
@@ -650,7 +650,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
 
         def action = new OptInMFAAuthenticationAction(configuration, scratchCodeGenerator)
 
-        def scratchCodes = hashedCodes()
+        def scratchCodes = scratchCodeGenerator.hashedCodes()
 
         when: "The authentication action is called"
         action.apply(authenticationAttributes, authenticatedSessions, "transactionId", null)
@@ -879,15 +879,10 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         }
 
         if (includeScratchCodes) {
-            user = user.with(Attribute.of("secondFactorCodes", ListAttributeValue.of(hashedCodes())))
+            user = user.with(Attribute.of("secondFactorCodes", ListAttributeValue.of(scratchCodeGenerator.hashedCodes())))
         }
 
         user
-    }
-
-    private List<String> hashedCodes()
-    {
-        scratchCodeGenerator.generateScratchCodes().stream().map { DigestUtils.sha256Hex(it) }.collect(Collectors.toList())
     }
 
     private def getAccountManagerStubReturningUser(user)
@@ -911,7 +906,7 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         authenticatedSessions
     }
 
-    private static class TestScratchCodeGenerator extends ScratchCodeGenerator
+    static class TestScratchCodeGenerator extends ScratchCodeGenerator
     {
         TestScratchCodeGenerator() {
             super(null)
@@ -920,6 +915,10 @@ final class OptInMFAAuthenticationActionTest extends Specification {
         @Override
         List<String> generateScratchCodes() {
             return (1..10).stream().map {it.toString()}.collect(Collectors.toList())
+        }
+
+        List<String> hashedCodes() {
+            (1..10).stream().map { DigestUtils.sha256Hex(it.toString()) }.collect(Collectors.toList())
         }
     }
 }

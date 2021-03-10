@@ -23,11 +23,11 @@
 #define ($_body)
     <p>Select another second factor which you want to use to verify the login.</p>
 
-    <form class="center" action="$_actionUrl/register" method="POST" id="secondFactorForm">
-        <div class="form-field mb1">
-            <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
-            <input type="text" name="secondFactorName" id="secondFactorName" />
+    <form action="$_actionUrl/register" method="POST" id="secondFactorForm">
+        <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
+        <div class="form-field">
             <label for="secondFactorName">Name for the second factor</label>
+            <input type="text" name="secondFactorName" id="secondFactorName" class="full-width block mb1 field-light" />
         </div>
         #foreach($_authenticatorItem in $availableAuthenticators)
             <div class="form-field mb1">
@@ -41,7 +41,7 @@
     </form>
 
     <p>Here is a list of your current second factors. Click on a factor to delete it.</p>
-    <form class="center" action="$_actionUrl/register" method="POST" id="secondFactorForm">
+    <form action="$_actionUrl/register" method="POST" id="secondFactorForm">
 
         #foreach($_authenticatorItem in $currentAuthenticators)
             <div class="form-field mb1">
