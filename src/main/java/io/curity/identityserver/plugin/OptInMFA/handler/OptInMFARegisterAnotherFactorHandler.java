@@ -62,6 +62,8 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
     private final AccountManager _accountManager;
     private final AuthenticatorDescriptorFactory _descriptorFactory;
     private final List<String> _availableSecondFactors;
+    private final Optional<String> _smsAuthenticatorACR;
+    private final Optional<String> _emailAuthenticatorACR;
 
     public static final Logger _logger = LoggerFactory.getLogger(OptInMFARegisterAnotherFactorHandler.class);
 
@@ -72,27 +74,13 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
         _exceptionFactory = exceptionFactory;
         _accountManager = configuration.getAccountManager();
         _availableSecondFactors = configuration.getAvailableAuthenticators();
+        _smsAuthenticatorACR = configuration.getSMSAuthenticatorACR();
+        _emailAuthenticatorACR = configuration.getEmailAuthenticatorACR();
     }
 
     @Override
     public Optional<ActionCompletionResult> get(ChooseAnotherFactorRequestModel request, Response response)
     {
-        List<AuthenticatorModel> availableSecondFactors = new ArrayList<>(_availableSecondFactors.size());
-
-        _availableSecondFactors.forEach(acr -> {
-            try
-            {
-                NonEmptyList<AuthenticatorDescriptor> descriptor = _descriptorFactory.getAuthenticatorDescriptors(acr);
-                availableSecondFactors.add(of(descriptor.getFirst(), acr));
-            }
-            catch (AuthenticatorNotConfiguredException e)
-            {
-                _logger.info("Authenticator listed in configuration but not available in the system: {}", acr);
-            }
-        });
-
-        response.putViewData("availableAuthenticators", availableSecondFactors, Response.ResponseModelScope.NOT_FAILURE);
-
         Attribute subjectAttribute = _sessionManager.get(SUBJECT);
         if (subjectAttribute == null) {
             _logger.info("No information in session about the pre-authenticated user.");
@@ -107,18 +95,44 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
         List<AuthenticatorModel> currentSecondFactors = new ArrayList<>(currentSecondFactorAcrs.size());
 
         currentSecondFactorAcrs.forEach((name, acr) -> {
-            try
-            {
-                NonEmptyList<AuthenticatorDescriptor> descriptor = _descriptorFactory.getAuthenticatorDescriptors(acr);
-                currentSecondFactors.add(of(descriptor.getFirst(), name));
-            }
-            catch (AuthenticatorNotConfiguredException e)
-            {
-                _logger.info("Authenticator listed for subject {} second factors but not available in the system: {}", subject, acr);
+            @Nullable AuthenticatorModel model = getAuthenticatorModel(acr, name);
+            if (model != null) {
+                currentSecondFactors.add(model);
             }
         });
 
         response.putViewData("currentAuthenticators", currentSecondFactors, Response.ResponseModelScope.NOT_FAILURE);
+
+        List<AuthenticatorModel> availableSecondFactors = new ArrayList<>(_availableSecondFactors.size());
+
+        _availableSecondFactors.forEach(acr -> {
+            @Nullable AuthenticatorModel model = getAuthenticatorModel(acr, acr);
+            if (model != null)
+            {
+                availableSecondFactors.add(model);
+            }
+        });
+
+        _smsAuthenticatorACR.ifPresent(smsAuthenticatorACR -> {
+            if (!currentSecondFactorAcrs.containsValue(smsAuthenticatorACR)) {
+                @Nullable AuthenticatorModel model = getAuthenticatorModel(smsAuthenticatorACR, smsAuthenticatorACR);
+                if (model != null) {
+                    availableSecondFactors.add(model);
+                }
+            }
+        });
+
+        _emailAuthenticatorACR.ifPresent(emailAuthenticatorACR -> {
+            if (!currentSecondFactorAcrs.containsValue(emailAuthenticatorACR)) {
+                @Nullable AuthenticatorModel model = getAuthenticatorModel(emailAuthenticatorACR, emailAuthenticatorACR);
+                if (model != null) {
+                    availableSecondFactors.add(model);
+                }
+            }
+        });
+
+        response.putViewData("availableAuthenticators", availableSecondFactors, Response.ResponseModelScope.NOT_FAILURE);
+
 
         return Optional.empty();
     }
@@ -177,5 +191,21 @@ public final class OptInMFARegisterAnotherFactorHandler implements ActionComplet
         }
 
         return requestModel;
+    }
+
+    @Nullable
+    private AuthenticatorModel getAuthenticatorModel(String acr, String name)
+    {
+        try
+        {
+            NonEmptyList<AuthenticatorDescriptor> descriptor = _descriptorFactory.getAuthenticatorDescriptors(acr);
+            return of(descriptor.getFirst(), name);
+        }
+        catch (AuthenticatorNotConfiguredException e)
+        {
+            _logger.info("Authenticator listed in configuration but not available in the system: {}", acr);
+        }
+
+        return null;
     }
 }

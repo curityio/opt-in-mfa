@@ -38,19 +38,16 @@
             </a>
         </div>
     #else
-        #if($isFirstChoiceOfSecondFactor == true)
-        <p>Choose the second factor that you will from now on use to verify the login.</p>
-        #else
-        <p>Select the second factor you want to use to verify the login.</p>
-        #end
-
         <form action="$_actionUrl/chooseFactor" method="POST" id="secondFactorForm">
             #if($isFirstChoiceOfSecondFactor == true)
+                <p>Choose the second factor that you will from now on use to verify the login.</p>
                 <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
                 <div class="form-field">
-                    <input type="text" name="secondFactorName" id="secondFactorName" />
-                    <label for="secondFactorName" class="full-width block mb1 field-light">Name for the second factor</label>
+                    <label for="secondFactorName" >Name for the second factor</label>
+                    <input type="text" name="secondFactorName" id="secondFactorName" class="full-width block mb1 field-light"/>
                 </div>
+            #else
+                <p>Select the second factor you want to use to verify the login.</p>
             #end
             #foreach($_authenticatorMapItem in $authenticators)
                 <div class="form-field mb1">

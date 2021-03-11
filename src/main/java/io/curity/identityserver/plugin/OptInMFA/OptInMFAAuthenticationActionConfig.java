@@ -24,6 +24,7 @@ import se.curity.identityserver.sdk.service.SessionManager;
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory;
 
 import java.util.List;
+import java.util.Optional;
 
 public interface OptInMFAAuthenticationActionConfig extends Configuration
 {
@@ -34,6 +35,12 @@ public interface OptInMFAAuthenticationActionConfig extends Configuration
 
     @Description("A list of authenticator ACRs, which can be configured by the user as their second factor.")
     List<String> getAvailableAuthenticators();
+
+    @Description("The ACR of the SMS authenticator.")
+    Optional<String> getSMSAuthenticatorACR();
+
+    @Description("The ACR of the email authenticator")
+    Optional<String> getEmailAuthenticatorACR();
 
     AccountManager getAccountManager();
 

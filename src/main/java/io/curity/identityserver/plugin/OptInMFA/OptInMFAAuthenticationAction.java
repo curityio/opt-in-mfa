@@ -41,6 +41,7 @@ import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.ANOTHER_NEW_SECOND_FACTOR_REGISTERED;
@@ -81,6 +82,8 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
     private final Map<String, String> _availableSecondFactors;
     private final ScratchCodeGenerator _scratchCodeGenerator;
     private final ExceptionFactory _exceptionFactory;
+    private final Optional<String> _smsAuthenticatorACR;
+    private final Optional<String> _emailAuthenticatorACR;
 
     public OptInMFAAuthenticationAction(OptInMFAAuthenticationActionConfig configuration, ScratchCodeGenerator scratchCodeGenerator)
     {
@@ -88,9 +91,13 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         _authenticatorDescriptorFactory = configuration.getAuthenticatorDescriptorFactory();
         _sessionManager = configuration.getSessionManager();
         _availableSecondFactors = new HashMap<>(configuration.getAvailableAuthenticators().size());
-        configuration.getAvailableAuthenticators().forEach((factor) -> _availableSecondFactors.put(factor, factor));
+        configuration.getAvailableAuthenticators().forEach(factor -> _availableSecondFactors.put(factor, factor));
+        configuration.getSMSAuthenticatorACR().ifPresent(factor -> _availableSecondFactors.put(factor, factor));
+        configuration.getEmailAuthenticatorACR().ifPresent(factor -> _availableSecondFactors.put(factor, factor));
         _scratchCodeGenerator = scratchCodeGenerator;
         _exceptionFactory = configuration.getExceptionFactory();
+        _smsAuthenticatorACR = configuration.getSMSAuthenticatorACR();
+        _emailAuthenticatorACR = configuration.getEmailAuthenticatorACR();
     }
 
     @Override
@@ -124,7 +131,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
         switch (processState) {
             case SECOND_FACTOR_CHOSEN: return handleActionWhenSecondFactorChosen(authenticatedSessions, authenticationAttributes);
-            case FIRST_SECOND_FACTOR_CHOSEN: return handleFirstChoiceOfSecondFactor(authenticationAttributes);
+            case FIRST_SECOND_FACTOR_CHOSEN: return handleFirstChoiceOfSecondFactor(authenticationAttributes, authenticatedSessions);
             case FIRST_SECOND_FACTOR_REGISTERED: return handleContinueFirstRegistrationOfSecondFactor(authenticationAttributes, authenticatedSessions);
             case SCRATCH_CODES_CONFIRMED: return handleScratchCodesConfirmed(authenticationAttributes, authenticatedSessions);
             case ANOTHER_NEW_SECOND_FACTOR_CHOSEN: return handleRegisterAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
@@ -236,7 +243,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         return handleActionWhenSecondFactorNotSet(authenticationAttributes, authenticatedSessions);
     }
 
-    private AuthenticationActionResult handleFirstChoiceOfSecondFactor(AuthenticationAttributes authenticationAttributes)
+    private AuthenticationActionResult handleFirstChoiceOfSecondFactor(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
         if (isEmergencyRegistration())
         {
@@ -261,19 +268,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
         String secondFactorAcr = _sessionManager.get(CHOSEN_SECOND_FACTOR_ATTRIBUTE).getValueOfType(String.class);
 
-        try
-        {
-            NonEmptyList<AuthenticatorDescriptor> authenticators = _authenticatorDescriptorFactory.getAuthenticatorDescriptors(secondFactorAcr);
-            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_REGISTERED));
-
-            //TODO - what if the chosen authenticator requires a path for registration?
-            return AuthenticationActionResult.pendingResult(register(authenticators.getFirst(), true));
-        }
-        catch (AuthenticatorNotConfiguredException e)
-        {
-            _logger.info("Invalid authenticator chosen as second factor, or authenticator not configured: {}", secondFactorAcr);
-            throw new IllegalStateException("Invalid authenticator chosen.");
-        }
+        return handleRegistrationOfAFactor(secondFactorAcr, authenticationAttributes, authenticatedSessions, FIRST_SECOND_FACTOR_REGISTERED);
     }
 
     private AuthenticationActionResult handleActionWhenSecondFactorChosen(AuthenticatedSessions authenticatedSessions, AuthenticationAttributes authenticationAttributes)
@@ -282,20 +277,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
         if (authenticatedSessions.contains(secondFactorAcr))
         {
-            Attribute registrationOfAnotherSecondFactor = _sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR);
-
-            if (registrationOfAnotherSecondFactor != null) {
-                return handleRegistrationOfAnotherSecondFactor(authenticatedSessions);
-            }
-
-            Attribute deletionOfSecondFactor = _sessionManager.remove(DELETION_OF_SECOND_FACTOR);
-
-            if (deletionOfSecondFactor != null)
-            {
-                return handleDeletionOfSecondFactor(authenticationAttributes, authenticatedSessions);
-            }
-
-            return AuthenticationActionResult.successfulResult(authenticationAttributes);
+            return handleContinuePreviousAction(authenticationAttributes, authenticatedSessions);
         }
 
         try
@@ -310,7 +292,25 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
         }
     }
 
-    private AuthenticationActionResult handleRegistrationOfAnotherSecondFactor(AuthenticatedSessions authenticatedSessions)
+    private AuthenticationActionResult handleContinuePreviousAction(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
+    {
+        Attribute registrationOfAnotherSecondFactor = _sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR);
+
+        if (registrationOfAnotherSecondFactor != null) {
+            return handleRegistrationOfAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
+        }
+
+        Attribute deletionOfSecondFactor = _sessionManager.remove(DELETION_OF_SECOND_FACTOR);
+
+        if (deletionOfSecondFactor != null)
+        {
+            return handleDeletionOfSecondFactor(authenticationAttributes, authenticatedSessions);
+        }
+
+        return AuthenticationActionResult.successfulResult(authenticationAttributes);
+    }
+
+    private AuthenticationActionResult handleRegistrationOfAnotherSecondFactor(AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions)
     {
         Attribute secondFactorAcrAttribute = _sessionManager.get(ANOTHER_SECOND_FACTOR_ATTRIBUTE);
 
@@ -321,10 +321,38 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
         String secondFactorAcr = secondFactorAcrAttribute.getValueOfType(String.class);
 
+        return handleRegistrationOfAFactor(secondFactorAcr, authenticationAttributes, authenticatedSessions, ANOTHER_NEW_SECOND_FACTOR_REGISTERED);
+
+    }
+
+    private AuthenticationActionResult handleRegistrationOfAFactor(String secondFactorAcr, AuthenticationAttributes authenticationAttributes, AuthenticatedSessions authenticatedSessions, OptInMFAState nextState)
+    {
+        // Email can be chosen as second factor, but does not support registration. We just need to add it to user's second factors in profile.
+        if (_emailAuthenticatorACR.isPresent() && secondFactorAcr.equals(_emailAuthenticatorACR.get()))
+        {
+            if (nextState == ANOTHER_NEW_SECOND_FACTOR_REGISTERED) {
+                return handleContinueRegistrationOfAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
+            }
+
+            return handleContinueFirstRegistrationOfSecondFactor(authenticationAttributes, authenticatedSessions);
+        }
+
+        // In case of an SMS authenticator register only if the user doesn't have a phone number set.
+        if (_smsAuthenticatorACR.isPresent() && secondFactorAcr.equals(_smsAuthenticatorACR.get()))
+        {
+            AccountAttributes user = _accountManager.getByUserName(authenticationAttributes.getSubject());
+            if (user.getPhoneNumbers().getPrimaryOrFirst() != null) {
+                if (nextState == ANOTHER_NEW_SECOND_FACTOR_REGISTERED) {
+                    return handleContinueRegistrationOfAnotherSecondFactor(authenticationAttributes, authenticatedSessions);
+                }
+                return handleContinueFirstRegistrationOfSecondFactor(authenticationAttributes, authenticatedSessions);
+            }
+        }
+
         try
         {
             NonEmptyList<AuthenticatorDescriptor> authenticators = _authenticatorDescriptorFactory.getAuthenticatorDescriptors(secondFactorAcr);
-            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, ANOTHER_NEW_SECOND_FACTOR_REGISTERED));
+            _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, nextState));
             return AuthenticationActionResult.pendingResult(register(authenticators.getFirst(), true));
         }
         catch (AuthenticatorNotConfiguredException e)
@@ -352,20 +380,7 @@ public final class OptInMFAAuthenticationAction implements AuthenticationAction
 
             if (forceShowListOfSecondFactors == null && secondFactors.values().stream().anyMatch(authenticatedSessions::contains))
             {
-                Attribute registrationOfAnotherSecondFactor = _sessionManager.remove(REGISTRATION_OF_ANOTHER_SECOND_FACTOR);
-
-                if (registrationOfAnotherSecondFactor != null) {
-                    return handleRegistrationOfAnotherSecondFactor(authenticatedSessions);
-                }
-
-                Attribute deletionOfSecondFactor = _sessionManager.remove(DELETION_OF_SECOND_FACTOR);
-
-                if (deletionOfSecondFactor != null)
-                {
-                    return handleDeletionOfSecondFactor(authenticationAttributes, authenticatedSessions);
-                }
-
-                return AuthenticationActionResult.successfulResult(authenticationAttributes);
+                return handleContinuePreviousAction(authenticationAttributes, authenticatedSessions);
             }
 
             _sessionManager.put(Attribute.of(AVAILABLE_SECOND_FACTORS_ATTRIBUTE, MapAttributeValue.of(secondFactors)));

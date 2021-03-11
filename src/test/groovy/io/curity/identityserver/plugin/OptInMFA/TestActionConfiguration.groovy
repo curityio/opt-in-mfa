@@ -77,6 +77,16 @@ class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
 
     @Override
     ExceptionFactory getExceptionFactory() {
-        return _exceptionFactory
+        _exceptionFactory
+    }
+
+    @Override
+    Optional<String> getSMSAuthenticatorACR() {
+        Optional.of("acr-sms")
+    }
+
+    @Override
+    Optional<String> getEmailAuthenticatorACR() {
+        Optional.of("acr-email")
     }
 }

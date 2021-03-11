@@ -34,7 +34,7 @@ public class ScratchCodeGenerator extends ManagedObject<OptInMFAAuthenticationAc
     public List<String> generateScratchCodes()
     {
         return IntStream.range(0, 10).mapToObj(
-            (i) -> randomAlphabetic(15) + "-" + randomNumeric(6) + "-" + randomAlphabetic(5)
+            (i) -> randomAlphabetic(5) + "-" + randomAlphabetic(5) + "-" + randomAlphabetic(5) + "-" + randomNumeric(5) + "-" + randomAlphabetic(5)
         ).collect(Collectors.toList());
     }
 }

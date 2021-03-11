@@ -68,13 +68,15 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
         when: "The get endpoint is called."
         def result = handler.get(model, response)
 
-        then: "The list of authenticators is prepared and displayed."
+        then: "The list of authenticators is prepared and displayed, without the sms authenticator, as the user already has it registered."
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("acr1") >> authenticatorList
         1 * factory.getAuthenticatorDescriptors("acr2") >> authenticatorList
+        1 * factory.getAuthenticatorDescriptors("acr-sms")  >> authenticatorList
+        1 * factory.getAuthenticatorDescriptors("acr-email") >> authenticatorList
         1 * factory.getAuthenticatorDescriptors("email1") >> authenticatorList
-        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
-        1 * response.putViewData("availableAuthenticators", { it.size() == 2 }, _)
+        1 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        1 * response.putViewData("availableAuthenticators", { it.size() == 3 }, _)
         1 * response.putViewData("currentAuthenticators", { it.size() == 3 }, _)
     }
 
@@ -105,8 +107,10 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
         1 * factory.getAuthenticatorDescriptors("acr1") >> authenticatorList
         1 * factory.getAuthenticatorDescriptors("acr2") >> { throw new AuthenticatorNotConfiguredException("") }
         1 * factory.getAuthenticatorDescriptors("email1") >> { throw new AuthenticatorNotConfiguredException("") }
-        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
-        1 * response.putViewData("availableAuthenticators", { it.size() == 1 }, _)
+        1 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        1 * factory.getAuthenticatorDescriptors("acr-sms") >> authenticatorList
+        1 * factory.getAuthenticatorDescriptors("acr-email") >> authenticatorList
+        1 * response.putViewData("availableAuthenticators", { it.size() == 2 }, _)
         1 * response.putViewData("currentAuthenticators", { it.size() == 2 }, _)
     }
 
@@ -173,6 +177,6 @@ class OptInMFARegisterAnotherFactorHandlerTest extends Specification {
 
     private static def getUserWithSecondFactors()
     {
-        AccountAttributes.fromMap(["id": "1234", "subject": "username", "secondFactors": ["My email": "email1", "My phone": "sms1", "My other phone": "sms1"]])
+        AccountAttributes.fromMap(["id": "1234", "subject": "username", "secondFactors": ["My email": "email1", "My phone": "acr-sms", "My other phone": "sms1"]])
     }
 }
