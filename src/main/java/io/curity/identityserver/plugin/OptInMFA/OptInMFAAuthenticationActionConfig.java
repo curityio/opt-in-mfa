@@ -19,9 +19,12 @@ import se.curity.identityserver.sdk.config.Configuration;
 import se.curity.identityserver.sdk.config.annotation.DefaultInteger;
 import se.curity.identityserver.sdk.config.annotation.Description;
 import se.curity.identityserver.sdk.service.AccountManager;
+import se.curity.identityserver.sdk.service.ExceptionFactory;
 import se.curity.identityserver.sdk.service.SessionManager;
-import se.curity.identityserver.sdk.service.authentication.AuthenticatorInformationProvider;
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory;
+
+import java.util.List;
+import java.util.Optional;
 
 public interface OptInMFAAuthenticationActionConfig extends Configuration
 {
@@ -30,9 +33,20 @@ public interface OptInMFAAuthenticationActionConfig extends Configuration
     @DefaultInteger(30)
     int getRememberMyChoiceDaysLimit();
 
+    @Description("A list of authenticator ACRs, which can be configured by the user as their second factor.")
+    List<String> getAvailableAuthenticators();
+
+    @Description("The ACR of the SMS authenticator.")
+    Optional<String> getSMSAuthenticatorACR();
+
+    @Description("The ACR of the email authenticator")
+    Optional<String> getEmailAuthenticatorACR();
+
     AccountManager getAccountManager();
 
     AuthenticatorDescriptorFactory getAuthenticatorDescriptorFactory();
 
     SessionManager getSessionManager();
+
+    ExceptionFactory getExceptionFactory();
 }

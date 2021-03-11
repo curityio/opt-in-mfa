@@ -13,8 +13,10 @@
  *  See the License for the specific language governing permissions and
  *  limitations under the License.
  */
-package io.curity.identityserver.plugin.OptInMFA;
+package io.curity.identityserver.plugin.OptInMFA.handler;
 
+import io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationActionConfig;
+import io.curity.identityserver.plugin.OptInMFA.model.ChooseFactorPostRequestModel;
 import se.curity.identityserver.sdk.attribute.Attribute;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionRequestHandler;
 import se.curity.identityserver.sdk.authenticationaction.completions.ActionCompletionResult;
@@ -28,18 +30,20 @@ import java.time.Duration;
 import java.util.Optional;
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE;
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_NAME;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE;
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.FIRST_SECOND_FACTOR_CHOSEN;
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN;
 
-public final class OptInMFAChooseFactorHandler implements ActionCompletionRequestHandler<ChooseFactorPostRequestModel>
+public final class OptInMFAChooseFactorHandler extends OptInMFAHandler implements ActionCompletionRequestHandler<ChooseFactorPostRequestModel>
 {
-    private final SessionManager _sessionManager;
     private final ExceptionFactory _exceptionFactory;
     private final int _rememberChoiceDays;
 
     public OptInMFAChooseFactorHandler(SessionManager sessionManager, ExceptionFactory exceptionFactory, OptInMFAAuthenticationActionConfig configuration)
     {
-        _sessionManager = sessionManager;
+        super(sessionManager);
         _exceptionFactory = exceptionFactory;
         _rememberChoiceDays = configuration.getRememberMyChoiceDaysLimit();
     }
@@ -53,8 +57,24 @@ public final class OptInMFAChooseFactorHandler implements ActionCompletionReques
     @Override
     public Optional<ActionCompletionResult> post(ChooseFactorPostRequestModel request, Response response)
     {
+        if (isInFirstChoiceState()) {
+            return processSecondFactorFirstConfiguration(request);
+        }
+
+        return processSecondFactorChoice(request, response);
+    }
+
+    private Optional<ActionCompletionResult> processSecondFactorFirstConfiguration(ChooseFactorPostRequestModel request) {
         _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
-        _sessionManager.put(Attribute.ofFlag(IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE));
+        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_NAME, request.getSecondFactorName()));
+        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, FIRST_SECOND_FACTOR_CHOSEN));
+
+        return Optional.of(ActionCompletionResult.complete());
+    }
+
+    private Optional<ActionCompletionResult> processSecondFactorChoice(ChooseFactorPostRequestModel request, Response response) {
+        _sessionManager.put(Attribute.of(CHOSEN_SECOND_FACTOR_ATTRIBUTE, request.getSecondFactor()));
+        _sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN));
 
         String rememberChoice = request.getRememberChoice();
 

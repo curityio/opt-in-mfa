@@ -16,14 +16,16 @@
 package io.curity.identityserver.plugin.OptInMFA
 
 import se.curity.identityserver.sdk.service.AccountManager
+import se.curity.identityserver.sdk.service.ExceptionFactory
 import se.curity.identityserver.sdk.service.SessionManager
 import se.curity.identityserver.sdk.service.authenticationaction.AuthenticatorDescriptorFactory
 
 class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
 {
-    private final AccountManager _accountManager;
-    private final AuthenticatorDescriptorFactory _authenticatorDescriptorFactory;
-    private final SessionManager _sessionManager;
+    private AccountManager _accountManager
+    private AuthenticatorDescriptorFactory _authenticatorDescriptorFactory
+    private final SessionManager _sessionManager
+    private ExceptionFactory _exceptionFactory
 
     TestActionConfiguration(AccountManager accountManager, AuthenticatorDescriptorFactory authenticatorDescriptorFactory, SessionManager sessionManager) {
         _accountManager = accountManager
@@ -31,28 +33,60 @@ class TestActionConfiguration implements OptInMFAAuthenticationActionConfig
         _sessionManager = sessionManager
     }
 
+    TestActionConfiguration(AccountManager accountManager, SessionManager sessionManager, ExceptionFactory exceptionFactory) {
+        _accountManager = accountManager
+        _exceptionFactory = exceptionFactory
+        _sessionManager = sessionManager
+    }
+
+    TestActionConfiguration() {}
+
     @Override
     AccountManager getAccountManager() {
-        return _accountManager
+        _accountManager
     }
 
     @Override
     AuthenticatorDescriptorFactory getAuthenticatorDescriptorFactory() {
-        return _authenticatorDescriptorFactory
+        _authenticatorDescriptorFactory
     }
 
     @Override
     SessionManager getSessionManager() {
-        return _sessionManager
+        _sessionManager
     }
 
     @Override
     int getRememberMyChoiceDaysLimit() {
-        return 30
+        30
     }
 
     @Override
     String id() {
-        return ""
+        ""
+    }
+
+    @Override
+    List<String> getAvailableAuthenticators() {
+        List authenticators = new ArrayList<String>(2)
+        authenticators.add("acr1")
+        authenticators.add("acr2")
+
+        authenticators
+    }
+
+    @Override
+    ExceptionFactory getExceptionFactory() {
+        _exceptionFactory
+    }
+
+    @Override
+    Optional<String> getSMSAuthenticatorACR() {
+        Optional.of("acr-sms")
+    }
+
+    @Override
+    Optional<String> getEmailAuthenticatorACR() {
+        Optional.of("acr-email")
     }
 }

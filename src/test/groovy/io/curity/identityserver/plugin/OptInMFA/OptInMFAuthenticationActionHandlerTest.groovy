@@ -15,6 +15,7 @@
  */
 package io.curity.identityserver.plugin.OptInMFA
 
+import io.curity.identityserver.plugin.OptInMFA.handler.OptInMFAuthenticationActionHandler
 import se.curity.identityserver.sdk.NonEmptyList
 import se.curity.identityserver.sdk.attribute.Attribute
 import se.curity.identityserver.sdk.attribute.MapAttributeValue
@@ -33,18 +34,22 @@ import spock.lang.Specification
 
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.AVAILABLE_SECOND_FACTORS_ATTRIBUTE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.CHOSEN_SECOND_FACTOR_ATTRIBUTE
-import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.OPT_IN_MFA_STATE
 import static io.curity.identityserver.plugin.OptInMFA.OptInMFAAuthenticationAction.REMEMBER_CHOICE_COOKIE_NAME
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.NO_SECOND_FACTOR_CHOSEN
+import static io.curity.identityserver.plugin.OptInMFA.OptInMFAState.SECOND_FACTOR_CHOSEN
 
 class OptInMFAuthenticationActionHandlerTest extends Specification {
 
     @Shared def sessionManager = Stub(SessionManager)
-    def configuration = new TestActionConfiguration(null, null, null)
+    def configuration = new TestActionConfiguration()
 
     def setupSpec() {
         sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
-                MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
+                MapAttributeValue.of(["My email": "email1", "My sms": "sms1", "My other sms": "sms1"]))
+
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, NO_SECOND_FACTOR_CHOSEN)
     }
 
     def "should not allow POST requests"()
@@ -81,8 +86,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         then:
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("email1") >> authenticatorList
-        1 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
-        1 * response.putViewData("authenticators", _ as Map, _)
+        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        1 * response.putViewData("authenticators", { it.size() == 3 }, _)
     }
 
     def "should remove authenticator from rendered list if authenticator no longer present in system"()
@@ -107,7 +112,7 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         noExceptionThrown()
         !result.isPresent()
         1 * factory.getAuthenticatorDescriptors("email1") >> authenticatorList
-        1 * factory.getAuthenticatorDescriptors("sms1") >> { throw new AuthenticatorNotConfiguredException("") }
+        2 * factory.getAuthenticatorDescriptors("sms1") >> { throw new AuthenticatorNotConfiguredException("") }
         // The resulting authenticator map should only have 1 element
         1 * response.putViewData("authenticators", { it.size() == 1 }, _)
     }
@@ -119,6 +124,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         sessionManager.remove(AVAILABLE_SECOND_FACTORS_ATTRIBUTE) >> Attribute.of(
                 AVAILABLE_SECOND_FACTORS_ATTRIBUTE,
                 MapAttributeValue.of(["My email": "email1", "My sms": "sms1"]))
+        sessionManager.get(OPT_IN_MFA_STATE) >> Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN)
+
         def factory = Mock(AuthenticatorDescriptorFactory)
         def handler = new OptInMFAuthenticationActionHandler(factory, sessionManager, configuration, null)
 
@@ -147,8 +154,7 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
 
         1 * sessionManager.put({ it.getName().getValue() == CHOSEN_SECOND_FACTOR_ATTRIBUTE
             it.getValue().toString() == "email1" })
-        1 * sessionManager.put({ it.getName().getValue() == IS_SECOND_FACTOR_CHOSEN_ATTRIBUTE
-            it.getValue() == [] as Collection })
+        1 * sessionManager.put(Attribute.of(OPT_IN_MFA_STATE, SECOND_FACTOR_CHOSEN))
         0 * response.putViewData("authenticators", _, _)
     }
 
@@ -176,8 +182,8 @@ class OptInMFAuthenticationActionHandlerTest extends Specification {
         !result.isPresent()
 
         1 * factory.getAuthenticatorDescriptors("email1") >> { throw new AuthenticatorNotConfiguredException("") }
-        1 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
+        2 * factory.getAuthenticatorDescriptors("sms1") >> authenticatorList
 
-        1 * response.putViewData("authenticators", { it.size() == 1 }, _)
+        1 * response.putViewData("authenticators", { it.size() == 2 }, _)
     }
 }

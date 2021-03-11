@@ -1,0 +1,66 @@
+#*
+ *  Copyright 2021 Curity AB
+ *
+ *  Licensed under the Apache License, Version 2.0 (the "License");
+ *  you may not use this file except in compliance with the License.
+ *  You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ *  Unless required by applicable law or agreed to in writing, software
+ *  distributed under the License is distributed on an "AS IS" BASIS,
+ *  WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ *  See the License for the specific language governing permissions and
+ *  limitations under the License.
+ *###
+
+#parse("fragments/icon-mappings")
+
+#set($title = "Register another second factor")
+
+#set ($page_symbol = $page_symbol_authenticate_desktop)
+
+#define ($_body)
+    <p>Select another second factor which you want to use to verify the login.</p>
+
+    <form action="$_actionUrl/emergencyRegister" method="POST" id="secondFactorForm">
+        #if($wrongCode == true)
+           <div class="alert-wrapper">
+                <div class="alert alert-danger">
+                   <p>Invalid scratch code entered.</p>
+               </div>
+           </div>
+        #end
+        <p>Enter one of the scratch codes you received when registering your first second factor, which wasn't used before.</p>
+        <div class="form-field">
+            <label for="scratchCode" #if($wrongCode == true) class="is-error is-error-danger" #end >Scratch code</label>
+            <input type="text" name="scratchCode" id="scratchCode" class="full-width block mb1 field-light #if($wrongCode == true) is-error is-error-danger #end" />
+        </div>
+        <p>Give your second factor a name, e.g. "Authenticator on my private moible", "company key 1", etc.</p>
+        <div class="form-field">
+            <label for="secondFactorName">Name for the second factor</label>
+            <input type="text" name="secondFactorName" id="secondFactorName" class="full-width block mb1 field-light" />
+        </div>
+        #foreach($_authenticatorMapItem in $availableAuthenticators)
+            <div class="form-field mb1">
+                <button type="submit" id="$_authenticatorMapItem.acr" class="button-secondary-factor button button-primary button-fullwidth button-social button-$_authenticatorMapItem.type">
+                    <i class="icon #iconClassName($_authenticatorMapItem.type)"></i>
+                    $_authenticatorMapItem.description
+                </button>
+            </div>
+        #end
+        <input type="hidden" id="secondFactor" name="secondFactor" value="" />
+    </form>
+
+    #parse("fragments/jquery")
+
+    <script type="text/javascript" $!nonceAttr>
+        jQuery(document).ready(function ($) {
+            $(".button-secondary-factor").on("click", function(e) {
+                $("#secondFactor").val(this.id);
+            });
+        });
+    </script>
+#end
+
+#parse("layouts/default")
